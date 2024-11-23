@@ -1,6 +1,8 @@
-mod board;
+#![feature(portable_simd)]
+
+pub mod board;
 pub mod bundle;
-mod common;
+pub mod common;
 pub mod stockpile;
 
 use board::Board;
@@ -53,7 +55,7 @@ impl State {
             }
             UpgradeSettlement(vertex_id) => {
                 // self.stockpiles[player].subtract(cost);
-                self.board.upgrade_settlement(player, vertex_id);
+                self.board.upgrade_settlement(vertex_id);
             }
             BuildRoad(edge_id) => {
                 // self.stockpiles[player].subtract(cost);
@@ -69,7 +71,8 @@ impl State {
     }
 
     fn roll_dice(&self) {
-        let roll = rand::thread_rng().gen_range(1..=6) + rand::thread_rng().gen_range(1..=6);
+        let mut rng = rand::thread_rng();
+        let roll = rng.gen_range(1..=6) + rng.gen_range(1..=6);
 
         // Calculate resource production (for each resource, for each player)
         // If the bank doesn't have enough of a resource:

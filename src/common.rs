@@ -5,6 +5,12 @@ pub type HexId = usize;
 pub type VertexId = usize;
 pub type EdgeId = usize;
 
+pub const N_HEXES: usize = 19;
+pub const N_VERTICES: usize = 54;
+pub const N_EDGES: usize = 72;
+
+pub const N_ROLLS: usize = 11;
+
 #[derive(Debug, Clone, Copy, Enum)]
 pub enum Resource {
     Brick,
@@ -14,7 +20,7 @@ pub enum Resource {
     Wool,
 }
 
-pub static RESOURCE_TYPES: [Resource; 5] = [Brick, Grain, Lumber, Ore, Wool];
+pub static RESOURCES: [Resource; 5] = [Brick, Grain, Lumber, Ore, Wool];
 
 pub enum Building {
     Settlement,
@@ -40,7 +46,7 @@ pub enum Player {
     White,
 }
 
-const PLAYERS: [Player; 4] = [Player::Blue, Player::Orange, Player::Red, Player::White];
+pub const PLAYERS: [Player; 4] = [Player::Blue, Player::Orange, Player::Red, Player::White];
 
 #[derive(Debug, Enum)]
 pub enum DevCard {
