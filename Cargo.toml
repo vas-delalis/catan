@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 enum-map = "2.7.3"
+num = "0.4.3"
 rand = "0.8.5"

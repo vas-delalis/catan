@@ -1,44 +1,89 @@
 use std::{
+    fmt::Display,
     ops::{Add, Index, IndexMut, Sub},
     simd::{num::SimdUint, Simd},
+    sync::LazyLock,
 };
 
-use enum_map::Enum;
+use enum_map::{enum_map, Enum, EnumMap};
 
-use crate::{Resource, RESOURCES};
+use crate::common::*;
 
-/// A multiset of `Resource` with efficient operations.
-#[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
+pub static BUY_COSTS: LazyLock<EnumMap<Purchasable, Bundle>> = LazyLock::new(|| {
+    enum_map! {
+       Purchasable::Road => Bundle::from_slice(&[1, 0, 1, 0, 0]),
+       Purchasable::Settlement => Bundle::from_slice(&[1, 1, 1, 0, 1]),
+       Purchasable::City => Bundle::from_slice(&[0, 2, 0, 3, 0]),
+       Purchasable::DevCard => Bundle::from_slice(&[0, 1, 0, 1, 1])
+    }
+});
+
+/// An [Enum] -> [u8] map equipped with efficient operations.
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Bundle {
     data: Simd<u8, 8>,
 }
 
 impl Bundle {
-    pub fn from_array(src: [u8; 5]) -> Self {
-        let mut dst = [0u8; 8];
-        dst[..5].copy_from_slice(&src);
+    pub fn from_slice(src: &[u8]) -> Self {
         Bundle {
-            data: Simd::from_array(dst),
+            data: Simd::from_slice(src),
         }
     }
-}
 
-impl Index<Resource> for Bundle {
-    type Output = u8;
+    pub fn sum(&self) -> u8 {
+        self.data.reduce_sum()
+    }
 
-    fn index(&self, index: Resource) -> &Self::Output {
-        &self.data[index as usize]
+    pub fn reduce_and(&self) -> u8 {
+        self.data.reduce_and()
+    }
+
+    pub fn display<T: Enum + Display>(&self) -> String {
+        let mut items = Vec::with_capacity(5);
+        for i in 0..T::LENGTH {
+            if self.data[i] == 0 {
+                continue;
+            }
+            items.push(format!("{} {}", self.data[i], T::from_usize(i)));
+        }
+
+        format!("Bundle[{}]", items.join(", "))
     }
 }
 
-impl IndexMut<Resource> for Bundle {
-    fn index_mut(&mut self, index: Resource) -> &mut Self::Output {
-        &mut self.data[index as usize]
+// impl Index<usize> for Bundle {
+//     type Output = u8;
+
+//     fn index(&self, index: usize) -> &Self::Output {
+//         &self.data[index]
+//     }
+// }
+
+// impl IndexMut<usize> for Bundle {
+//     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+//         &mut self.data[index]
+//     }
+// }
+
+// Inexplicably, `Enum` has a custom `into_usize` method instead of just implying `From<usize>`.
+
+impl<T: Enum> Index<T> for Bundle {
+    type Output = u8;
+
+    fn index(&self, index: T) -> &Self::Output {
+        &self.data[index.into_usize()]
+    }
+}
+
+impl<T: Enum> IndexMut<T> for Bundle {
+    fn index_mut(&mut self, index: T) -> &mut Self::Output {
+        &mut self.data[index.into_usize()]
     }
 }
 
 impl Add for Bundle {
-    type Output = Bundle;
+    type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
         Bundle {
             data: self.data.saturating_add(rhs.data),
@@ -47,7 +92,7 @@ impl Add for Bundle {
 }
 
 impl Sub for Bundle {
-    type Output = Bundle;
+    type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
         Bundle {
             data: self.data.saturating_sub(rhs.data),
@@ -55,17 +100,11 @@ impl Sub for Bundle {
     }
 }
 
-impl std::fmt::Debug for Bundle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut items = Vec::with_capacity(5);
-        for i in 0..Resource::LENGTH {
-            if self.data[i] == 0 {
-                continue;
-            }
-            items.push(format!("{} {:?}", self.data[i], RESOURCES[i]));
+impl From<&[u8]> for Bundle {
+    fn from(value: &[u8]) -> Self {
+        Bundle {
+            data: Simd::load_or_default(value),
         }
-        write!(f, "Bundle[{}]", items.join(", "))?;
-        Ok(())
     }
 }
 

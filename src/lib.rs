@@ -1,32 +1,40 @@
 #![feature(portable_simd)]
 
-pub mod board;
+mod board;
 pub mod bundle;
 pub mod common;
 pub mod stockpile;
 
-use board::Board;
-use common::{Resource::*, *};
-use enum_map::{enum_map, EnumMap};
-use rand::prelude::*;
-use stockpile::Stockpile;
+pub use common::*;
+
+use {
+    board::Board,
+    bundle::{Bundle, BUY_COSTS},
+    enum_map::EnumMap,
+    rand::prelude::*,
+    stockpile::Stockpile,
+};
 
 struct State {
-    bank: Stockpile,
+    stockpile: Stockpile,
     board: Board,
     player_order: [Player; 4],
     current_player_index: usize,
-    stockpiles: EnumMap<Player, Stockpile>,
+    player_data: EnumMap<Player, PlayerData>,
     has_rolled: bool,
     has_played_dev_card: bool,
 }
 
+struct PlayerData {
+    resources: Bundle,
+}
+
 impl State {
-    fn new(&self) -> Self {
-        let bank = Stockpile::bank();
-        let player_banks: EnumMap<Player, Stockpile> = enum_map! {
-            _ => Stockpile::player()
-        };
+    pub fn new(&self) -> Self {
+        // let bank = Stockpile::bank();
+        // let player_banks: EnumMap<Player, Stockpile> = enum_map! {
+        //     _ => Stockpile::player()
+        // };
         todo!()
     }
 
@@ -34,17 +42,33 @@ impl State {
         self.player_order[self.current_player_index]
     }
 
-    fn get_actions(&self) -> Vec<Action> {
+    pub fn get_actions(&self) -> Vec<Action> {
         use Action::*;
+        let player = self.current_player();
+        let player_data = &self.player_data[player];
 
         let mut actions = Vec::with_capacity(4);
         if !self.has_rolled {
             actions.push(RollDice);
         }
+
+        for (item, cost) in BUY_COSTS.iter() {
+            if self.stockpile.has_purchasable(player, item)
+                && cost <= &self.stockpile.resources
+                && cost <= &player_data.resources
+            {
+                match item {
+                    Purchasable::DevCard => actions.push(BuyDevCard),
+                    Purchasable::Settlement => {}
+                    Purchasable::City => {}
+                    Purchasable::Road => {}
+                }
+            }
+        }
         actions
     }
 
-    fn apply_acton(&mut self, action: Action) {
+    pub fn apply_acton(&mut self, action: Action) {
         use Action::*;
 
         let player = self.current_player();
