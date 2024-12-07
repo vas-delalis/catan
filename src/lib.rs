@@ -23,6 +23,7 @@ struct State {
     player_data: EnumMap<Player, PlayerData>,
     has_rolled: bool,
     has_played_dev_card: bool,
+    // TODO: keep track of freshly bought dev cards
 }
 
 struct PlayerData {
@@ -59,9 +60,18 @@ impl State {
             {
                 match item {
                     Purchasable::DevCard => actions.push(BuyDevCard),
-                    Purchasable::Settlement => {}
-                    Purchasable::City => {}
-                    Purchasable::Road => {}
+                    Purchasable::Settlement => {
+                        let slots = self.board.available_settlements(player);
+                        actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
+                    }
+                    Purchasable::City => {
+                        let settlements = self.board.available_cities(player);
+                        actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
+                    }
+                    Purchasable::Road => {
+                        let slots = self.board.available_roads(player);
+                        actions.extend(slots.map(|e_id| BuildRoad(e_id)));
+                    }
                 }
             }
         }
@@ -96,11 +106,15 @@ impl State {
 
     fn roll_dice(&self) {
         let mut rng = rand::thread_rng();
-        let roll = rng.gen_range(1..=6) + rng.gen_range(1..=6);
+        let roll: u8 = rng.gen_range(1..=6) + rng.gen_range(1..=6);
 
-        // Calculate resource production (for each resource, for each player)
-        // If the bank doesn't have enough of a resource:
-        //   If only one player was supposed to get it, give them what remains
-        //   Else, no one gets anything
+        if roll == 7 {
+            // Move robber
+        } else {
+            // Calculate resource production (for each resource, for each player)
+            // If the bank doesn't have enough of a resource:
+            //   If only one player was supposed to get it, give them what remains
+            //   Else, no one gets anything
+        }
     }
 }
