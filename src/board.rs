@@ -9,9 +9,12 @@ use std::{
 };
 
 use crate::{bundle::Bundle, common::*};
-use bitboard::BitIterator;
+use bitboard::Bitboard;
 use EdgeDir::*;
 use VertexDir::*;
+
+type V = u64;
+type E = u128;
 
 #[derive(Debug, Clone, Copy)]
 struct Hex(i8, i8);
@@ -168,27 +171,27 @@ impl Edge {
 
 /// Data -- mainly bitmaps -- that doesn't depend on the game state.
 struct SharedBoardData {
-    hex_to_verts: Vec<VertexMap>,
-    vert_to_verts: Vec<VertexMap>,
-    edge_to_verts: Vec<VertexMap>,
+    hex_to_verts: Vec<Bitboard<V>>,
+    vert_to_verts: Vec<Bitboard<V>>,
+    edge_to_verts: Vec<Bitboard<V>>,
 
-    vert_to_edges: Vec<EdgeMap>,
-    edge_to_edges: Vec<EdgeMap>,
+    vert_to_edges: Vec<Bitboard<E>>,
+    edge_to_edges: Vec<Bitboard<E>>,
 
-    roll_resources: Vec<Vec<VertexMap>>, // Vertices that receive a given resource on a given roll
+    roll_resources: Vec<Vec<Bitboard<V>>>, // Vertices that receive a given resource on a given roll
     simple_board: SimpleBoard,
 } // TODO: use arrays? (fixed length is good)
 
 /// Implements behavior that relates to the Catan hex board.
 pub struct Board {
     shared_data: Rc<SharedBoardData>,
-    player_buildings: EnumMap<Player, VertexMap>,
-    player_roads: EnumMap<Player, EdgeMap>,
-    player_settlement_slots: EnumMap<Player, VertexMap>,
-    player_road_slots: EnumMap<Player, EdgeMap>,
-    settlement_slots: VertexMap,
-    road_slots: EdgeMap,
-    cities: VertexMap,
+    player_buildings: EnumMap<Player, Bitboard<V>>,
+    player_roads: EnumMap<Player, Bitboard<E>>,
+    player_settlement_slots: EnumMap<Player, Bitboard<V>>,
+    player_road_slots: EnumMap<Player, Bitboard<E>>,
+    settlement_slots: Bitboard<V>,
+    road_slots: Bitboard<E>,
+    cities: Bitboard<V>,
 }
 
 impl Clone for Board {
@@ -213,34 +216,35 @@ impl Board {
     pub fn new(resources: Vec<Resource>, rolls: Vec<u8>) -> Self {
         let simple_board = SimpleBoard::new();
 
-        let mut roll_resources: Vec<Vec<VertexMap>> = vec![vec![0u64; Resource::LENGTH]; N_ROLLS];
+        let mut roll_resources: Vec<Vec<Bitboard<V>>> =
+            vec![vec![Bitboard::zeros(); Resource::LENGTH]; N_ROLLS];
 
-        let mut hex_to_verts: Vec<VertexMap> = vec![0; N_HEXES];
-        let mut vert_to_verts: Vec<VertexMap> = vec![0; N_VERTICES];
-        let mut edge_to_verts: Vec<VertexMap> = vec![0; N_EDGES];
+        let mut hex_to_verts: Vec<Bitboard<V>> = vec![Bitboard::zeros(); N_HEXES];
+        let mut vert_to_verts: Vec<Bitboard<V>> = vec![Bitboard::zeros(); N_VERTICES];
+        let mut edge_to_verts: Vec<Bitboard<V>> = vec![Bitboard::zeros(); N_EDGES];
 
-        let mut edge_to_edges = vec![0; N_EDGES];
-        let mut vert_to_edges = vec![0; N_VERTICES];
+        let mut edge_to_edges: Vec<Bitboard<E>> = vec![Bitboard::zeros(); N_EDGES];
+        let mut vert_to_edges: Vec<Bitboard<E>> = vec![Bitboard::zeros(); N_VERTICES];
 
         // Populate hex-to-vert maps and roll-resource maps
         for (i, hex) in simple_board.hexes.iter().enumerate() {
-            let adj = simple_board.vert_bitmap(&hex.vertices());
+            let adj = simple_board.vert_bitboard(&hex.vertices());
             hex_to_verts[i] = adj;
             roll_resources[(rolls[i] - 2) as usize][resources[i] as usize] |= adj;
         }
 
         // Populate vert-to-* maps
         for (vert, &i) in simple_board.vertex_ids.iter() {
-            vert_to_edges[i] = simple_board.edge_bitmap(&vert.edges());
-            vert_to_verts[i] = simple_board.vert_bitmap(&vert.neighbors());
-            vert_to_verts[i] |= 1 << i; // Include self
+            vert_to_edges[i] = simple_board.edge_bitboard(&vert.edges());
+            vert_to_verts[i] = simple_board.vert_bitboard(&vert.neighbors());
+            vert_to_verts[i].add(i); // Include self
         }
 
         // Populate edge-to-* maps
         for (edge, &i) in simple_board.edge_ids.iter() {
-            edge_to_verts[i] = simple_board.vert_bitmap(&edge.vertices());
-            edge_to_edges[i] = simple_board.edge_bitmap(&edge.neighbors());
-            edge_to_edges[i] |= 1 << i; // Include self
+            edge_to_verts[i] = simple_board.vert_bitboard(&edge.vertices());
+            edge_to_edges[i] = simple_board.edge_bitboard(&edge.neighbors());
+            edge_to_edges[i].add(i); // Include self
         }
 
         let shared_data = SharedBoardData {
@@ -260,9 +264,9 @@ impl Board {
             player_roads: EnumMap::default(),
             player_settlement_slots: EnumMap::default(),
             player_road_slots: EnumMap::default(),
-            settlement_slots: !VertexMap::default(),
-            road_slots: !EdgeMap::default(),
-            cities: VertexMap::default(),
+            settlement_slots: Bitboard::ones(),
+            road_slots: Bitboard::ones(),
+            cities: Bitboard::zeros(),
         }
     }
 
@@ -286,20 +290,17 @@ impl Board {
 
     // Gameplay
 
-    pub fn available_settlements(&self, player: Player) -> Vec<VertexId> {
-        // TODO: return iterator
-        let bitboard = self.settlement_slots & self.player_settlement_slots[player];
-        BitIterator::new(bitboard).collect()
+    pub fn available_settlements(&self, player: Player) -> Bitboard<V> {
+        self.settlement_slots & self.player_settlement_slots[player]
     }
 
-    pub fn available_roads(&self, player: Player) -> Vec<EdgeId> {
+    pub fn available_roads(&self, player: Player) -> Bitboard<E> {
         // TODO: return iterator
-        let bitboard = self.road_slots & self.player_road_slots[player];
-        BitIterator::new(bitboard).collect()
+        (self.road_slots & self.player_road_slots[player]).into()
     }
 
     pub fn add_settlement(&mut self, player: Player, vertex_id: VertexId) {
-        self.player_buildings[player] |= 1 << vertex_id;
+        self.player_buildings[player].add(vertex_id);
         // Mark vertex and neighbors as occupied
         // (Currently, same-to-same[i] includes i itself, not just its neighbors.)
         self.settlement_slots &= !self.shared_data.vert_to_verts[vertex_id];
@@ -308,10 +309,9 @@ impl Board {
     }
 
     pub fn add_road(&mut self, player: Player, edge_id: EdgeId) {
-        let delta = 1 << edge_id;
         // Mark edge as occupied
-        self.player_roads[player] |= delta;
-        self.road_slots &= !delta;
+        self.player_roads[player].add(edge_id);
+        self.road_slots.remove(edge_id);
         // Allow adjacent settlements
         self.player_settlement_slots[player] |= self.shared_data.edge_to_verts[edge_id];
         // Allow adjacent roads
@@ -319,7 +319,7 @@ impl Board {
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
-        self.cities |= 1 << vertex_id;
+        self.cities.add(vertex_id);
     }
 
     pub fn produce_resources(&self, roll: u8) -> EnumMap<Player, Bundle> {
@@ -327,10 +327,9 @@ impl Board {
         let mut bundles: EnumMap<Player, Bundle> = EnumMap::default();
 
         for res in RESOURCES {
-            let resource_map: VertexMap =
-                self.shared_data.roll_resources[(roll - 2) as usize][res as usize];
+            let resource_map = self.shared_data.roll_resources[(roll - 2) as usize][res as usize];
             for (player, buildings) in self.player_buildings {
-                let first_pass: VertexMap = resource_map & buildings;
+                let first_pass = resource_map & buildings;
                 let amount = first_pass.count_ones() + (first_pass & self.cities).count_ones();
                 bundles[player][res] = amount as u8;
             }
@@ -339,7 +338,7 @@ impl Board {
     }
 
     pub fn victory_points(&self, player: Player) -> u32 {
-        let buildings: VertexMap = self.player_buildings[player];
+        let buildings = self.player_buildings[player];
         buildings.count_ones() + (buildings & self.cities).count_ones()
     }
 }
@@ -400,22 +399,24 @@ impl SimpleBoard {
     }
 
     /// Converts a list of vertices to the corresponding bitmap.
-    pub fn vert_bitmap(&self, vertices: &[Vertex]) -> VertexMap {
-        vertices
-            .into_iter()
-            .fold(0u64, |bitmap, v| match self.vertex_ids.get(&v) {
-                Some(v_id) => bitmap | (1 << v_id),
-                _ => bitmap,
-            })
+    pub fn vert_bitboard(&self, vertices: &[Vertex]) -> Bitboard<V> {
+        let mut bitboard = Bitboard::zeros();
+        for v in vertices {
+            if let Some(&id) = self.vertex_ids.get(v) {
+                bitboard.add(id);
+            }
+        }
+        bitboard
     }
 
-    pub fn edge_bitmap(&self, edges: &[Edge]) -> EdgeMap {
-        edges
-            .into_iter()
-            .fold(0u128, |bitmap, e| match self.edge_ids.get(e) {
-                Some(e_id) => bitmap | (1 << e_id),
-                _ => bitmap,
-            })
+    pub fn edge_bitboard(&self, edges: &[Edge]) -> Bitboard<E> {
+        let mut bitboard = Bitboard::zeros();
+        for e in edges {
+            if let Some(&id) = self.edge_ids.get(e) {
+                bitboard.add(id);
+            }
+        }
+        bitboard
     }
 }
 
@@ -442,7 +443,9 @@ mod tests {
         map.map(|_, arr| Bundle::from(arr.as_slice()))
     }
 
-    /// *Illustration A* in the [Catan manual](https://www.catan.com/sites/default/files/2021-06/catan_base_rules_2020_200707.pdf)
+    /// *Illustration A* in the [Catan manual]
+    ///
+    /// [Catan manual]: https://www.catan.com/sites/default/files/2021-06/catan_base_rules_2020_200707.pdf
     fn setup() -> Board {
         let resources = vec![
             Ore, Wool, Lumber, Grain, Brick, Wool, Brick, Grain, Lumber, Ore, Lumber, Ore, Lumber,
@@ -515,11 +518,11 @@ mod tests {
     fn no_adjacent_settlements() {
         let b = setup();
 
-        let total_available: usize = PLAYERS
-            .into_iter()
-            .map(|p| b.available_settlements(p).len())
-            .sum();
-        assert_eq!(total_available, 0);
+        // No one can build anything
+        assert!(b.available_settlements(Blue).next().is_none());
+        assert!(b.available_settlements(Orange).next().is_none());
+        assert!(b.available_settlements(Red).next().is_none());
+        assert!(b.available_settlements(White).next().is_none());
     }
 
     #[test]
@@ -527,15 +530,14 @@ mod tests {
         let mut b = setup();
 
         road(&mut b, Red, Edge(1, -1, W));
+        let settlement_vert = b.vertex_id(Vertex(0, 0, N));
+        let red_verts: Vec<VertexId> = b.available_settlements(Red).collect();
 
-        // Red and only Red can build this settlement
-        let red = b.available_settlements(Red);
-        let rest = [Blue, Orange, White]
-            .map(|p| b.available_settlements(p))
-            .concat();
-
-        assert_eq!(red, vec![b.vertex_id(Vertex(0, 0, N))]);
-        assert_eq!(rest, vec![]);
+        // Red can only build this settlement. The rest can't build any settlements.
+        assert_eq!(red_verts, vec![settlement_vert]);
+        assert!(b.available_settlements(Blue).next().is_none());
+        assert!(b.available_settlements(Orange).next().is_none());
+        assert!(b.available_settlements(White).next().is_none());
     }
 
     #[test]
@@ -544,11 +546,10 @@ mod tests {
 
         // Only Red can build this road
         let road = b.edge_id(Edge(0, -1, NW));
-        let mut edges = [Blue, Orange, White]
-            .into_iter()
-            .flat_map(|p| b.available_roads(p));
-
-        assert!(edges.find(|&e| e == road).is_none());
+        assert!(!b.available_roads(Orange).contains(road));
+        assert!(b.available_roads(Red).contains(road));
+        assert!(!b.available_roads(Blue).contains(road));
+        assert!(!b.available_roads(White).contains(road));
     }
 
     #[test]
@@ -557,10 +558,10 @@ mod tests {
 
         // Only Red and Orange can build this road
         let road = b.edge_id(Edge(1, -1, NW));
-        assert!(b.available_roads(Orange).contains(&road));
-        assert!(b.available_roads(Red).contains(&road));
-        assert!(!b.available_roads(Blue).contains(&road));
-        assert!(!b.available_roads(White).contains(&road));
+        assert!(b.available_roads(Orange).contains(road));
+        assert!(b.available_roads(Red).contains(road));
+        assert!(!b.available_roads(Blue).contains(road));
+        assert!(!b.available_roads(White).contains(road));
     }
 
     #[test]
@@ -572,8 +573,6 @@ mod tests {
 
         // Assert all placeable roads are on edges with ids in 0..72
         let placeable = b.available_roads(Red);
-        assert!(placeable
-            .iter()
-            .all(|edge_id| (0..N_EDGES).contains(edge_id)));
+        assert!(placeable < Bitboard::new(1 << N_EDGES));
     }
 }

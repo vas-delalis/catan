@@ -3,8 +3,6 @@ use enum_map::Enum;
 pub type HexId = usize;
 pub type VertexId = usize;
 pub type EdgeId = usize;
-pub type VertexMap = u64;
-pub type EdgeMap = u128;
 
 pub const N_HEXES: usize = 19;
 pub const N_VERTICES: usize = 54;
