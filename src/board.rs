@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     rc::Rc,
+    simd::{cmp::SimdOrd, u8x8},
 };
 
 use crate::{bundle::Bundle, common::*};
@@ -185,7 +186,7 @@ struct SharedBoardData {
 /// Implements behavior that relates to the Catan hex board.
 pub struct Board {
     shared_data: Rc<SharedBoardData>,
-    player_buildings: EnumMap<Player, Bitboard<V>>,
+    player_buildings: EnumMap<Player, Bitboard<V>>, // Idea: store city flags in 10 free bits
     player_roads: EnumMap<Player, Bitboard<E>>,
     player_settlement_slots: EnumMap<Player, Bitboard<V>>,
     player_road_slots: EnumMap<Player, Bitboard<E>>,
@@ -288,6 +289,11 @@ impl Board {
         self.shared_data.simple_board.edges[id]
     }
 
+    /// Get the set of vertices that receive a given resource on a given roll.
+    fn roll_resource_vertices(&self, roll: u8, resource: Resource) -> Bitboard<V> {
+        self.shared_data.roll_resources[(roll - 2) as usize][resource as usize]
+    }
+
     // Gameplay
 
     pub fn available_settlements(&self, player: Player) -> Bitboard<V> {
@@ -297,6 +303,10 @@ impl Board {
     pub fn available_roads(&self, player: Player) -> Bitboard<E> {
         // TODO: return iterator
         (self.road_slots & self.player_road_slots[player]).into()
+    }
+
+    pub fn available_cities(&self, player: Player) -> Bitboard<V> {
+        self.player_buildings[player] & !self.cities
     }
 
     pub fn add_settlement(&mut self, player: Player, vertex_id: VertexId) {
@@ -322,20 +332,38 @@ impl Board {
         self.cities.add(vertex_id);
     }
 
-    pub fn produce_resources(&self, roll: u8) -> EnumMap<Player, Bundle> {
-        // TODO: Vectorize?
-        let mut bundles: EnumMap<Player, Bundle> = EnumMap::default();
+    pub fn produce_resources(&self, roll: u8, in_stock: Bundle) -> EnumMap<Player, Bundle> {
+        // TODO: Vectorize
+        let mut player_bundles: EnumMap<Player, Bundle> = EnumMap::default();
 
         for res in RESOURCES {
-            let resource_map = self.shared_data.roll_resources[(roll - 2) as usize][res as usize];
+            let resource_verts = self.roll_resource_vertices(roll, res);
+            let mut bundle = Bundle::default();
+
             for (player, buildings) in self.player_buildings {
-                let first_pass = resource_map & buildings;
-                let amount = first_pass.count_ones() + (first_pass & self.cities).count_ones();
-                bundles[player][res] = amount as u8;
+                let first_pass = resource_verts & buildings;
+                let amount =
+                    (first_pass.count_ones() + (first_pass & self.cities).count_ones()) as u8;
+                bundle[player] = amount;
+            }
+
+            if bundle.reduce_sum() > in_stock[res] {
+                bundle.data = bundle.data.simd_min(u8x8::splat(in_stock[res]));
+                if bundle.count_nonzero() > 1 {
+                    // No one gets any
+                    bundle = Bundle::splat(0);
+                }
+            }
+
+            for player in PLAYERS {
+                player_bundles[player][res] = bundle[player];
             }
         }
-        bundles
+        player_bundles
     }
+
+    // City flags in leftover bits would save 1 lanewise popcnt and 1 bitwise and
+    // https://stackoverflow.com/questions/51104493/is-it-possible-to-popcount-m256i-and-store-result-in-8-32-bit-words-instead-of
 
     pub fn victory_points(&self, player: Player) -> u32 {
         let buildings = self.player_buildings[player];
@@ -343,8 +371,7 @@ impl Board {
     }
 }
 
-/// A high-level representation of the Catan board.
-/// Used to generate the much more efficient [Board].
+/// A high-level representation of the Catan board. Used to generate the much more efficient [Board].
 #[derive(Debug)]
 struct SimpleBoard {
     hexes: Vec<Hex>,
@@ -483,7 +510,8 @@ mod tests {
         let b = setup();
         let roll = 6;
 
-        let production = b.produce_resources(roll);
+        let in_stock = Bundle::splat(20);
+        let production = b.produce_resources(roll, in_stock);
         let expected = to_bundles(enum_map! {
             Blue => [0; 5],
             Orange => [0, 1, 0, 0, 0],
@@ -504,11 +532,50 @@ mod tests {
 
         city(&mut b, Vertex(0, -1, N));
 
-        let production = b.produce_resources(10);
+        let in_stock = Bundle::splat(20);
+        let production = b.produce_resources(10, in_stock);
         let expected = to_bundles(enum_map! {
             Blue => [0; 5],
             Orange => [1, 0, 0, 0, 0],
             Red => [0, 0, 0, 6, 0],
+            White => [0; 5]
+        });
+        assert_eq!(production, expected);
+    }
+
+    #[test]
+    fn insufficient_resource_production() {
+        // 2 ore produced for 2 players; 1 in stock; no one gets any
+        // 1 brick produced; 1 in stock; orange gets it per usual
+        let mut b = setup();
+
+        sett(&mut b, Blue, Vertex(0, -2, N));
+
+        let in_stock = Bundle::splat(1);
+        let production = b.produce_resources(10, in_stock);
+        let expected = to_bundles(enum_map! {
+            Blue => [0; 5],
+            Orange => [1, 0, 0, 0, 0],
+            Red => [0; 5],
+            White => [0; 5]
+        });
+        assert_eq!(production, expected);
+    }
+
+    #[test]
+    fn insufficient_resource_production_exception() {
+        // 2 ore produced for 1 player; 1 in stock; player gets 1
+        // 1 brick produced; 1 in stock; orange gets it per usual
+        let mut b = setup();
+
+        city(&mut b, Vertex(0, -1, N));
+
+        let in_stock = Bundle::splat(1);
+        let production = b.produce_resources(10, in_stock);
+        let expected = to_bundles(enum_map! {
+            Blue => [0; 5],
+            Orange => [1, 0, 0, 0, 0],
+            Red => [0, 0, 0, 1, 0],
             White => [0; 5]
         });
         assert_eq!(production, expected);

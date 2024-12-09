@@ -5,6 +5,8 @@ pub mod bundle;
 pub mod common;
 pub mod stockpile;
 
+use std::simd::cmp::SimdPartialOrd;
+
 pub use common::*;
 
 use {
@@ -15,7 +17,7 @@ use {
     stockpile::Stockpile,
 };
 
-struct State {
+pub struct State {
     stockpile: Stockpile,
     board: Board,
     player_order: [Player; 4],
@@ -55,8 +57,8 @@ impl State {
 
         for (item, cost) in BUY_COSTS.iter() {
             if self.stockpile.has_purchasable(player, item)
-                && cost <= &self.stockpile.resources
-                && cost <= &player_data.resources
+                && cost.data.simd_lt(self.stockpile.resources.data).all()
+                && cost.data.simd_lt(player_data.resources.data).all()
             {
                 match item {
                     Purchasable::DevCard => actions.push(BuyDevCard),
@@ -104,7 +106,7 @@ impl State {
         todo!()
     }
 
-    fn roll_dice(&self) {
+    fn roll_dice(&mut self) {
         let mut rng = rand::thread_rng();
         let roll: u8 = rng.gen_range(1..=6) + rng.gen_range(1..=6);
 
@@ -112,9 +114,13 @@ impl State {
             // Move robber
         } else {
             // Calculate resource production (for each resource, for each player)
-            // If the bank doesn't have enough of a resource:
-            //   If only one player was supposed to get it, give them what remains
-            //   Else, no one gets anything
+            let production = self
+                .board
+                .produce_resources(roll, self.stockpile.resources.clone());
+
+            for player in PLAYERS {
+                self.player_data[player].resources += production[player].clone();
+            }
         }
     }
 }

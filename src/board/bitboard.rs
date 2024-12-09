@@ -13,7 +13,7 @@ impl BitboardInt for u128 {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Bitboard<T: BitboardInt> {
-    value: T,
+    pub value: T,
 }
 
 impl<T: BitboardInt> Bitboard<T> {

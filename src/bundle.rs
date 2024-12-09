@@ -1,7 +1,8 @@
 use std::{
     fmt::Display,
-    ops::{Add, Index, IndexMut, Sub},
-    simd::{num::SimdUint, Simd},
+    iter::Sum,
+    ops::{Add, AddAssign, Index, IndexMut, Sub},
+    simd::{cmp::SimdPartialOrd, num::SimdUint, u8x8},
     sync::LazyLock,
 };
 
@@ -19,24 +20,40 @@ pub static BUY_COSTS: LazyLock<EnumMap<Purchasable, Bundle>> = LazyLock::new(|| 
 });
 
 /// An [Enum] -> [u8] map equipped with efficient operations.
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Bundle {
-    data: Simd<u8, 8>,
+    pub data: u8x8,
 }
 
 impl Bundle {
-    pub fn from_slice(src: &[u8]) -> Self {
+    pub fn new(data: u8x8) -> Self {
+        Bundle { data }
+    }
+
+    pub fn splat(value: u8) -> Self {
         Bundle {
-            data: Simd::from_slice(src),
+            data: u8x8::splat(value),
         }
     }
 
-    pub fn sum(&self) -> u8 {
+    pub fn from_slice(src: &[u8]) -> Self {
+        Bundle {
+            data: u8x8::from_slice(src),
+        }
+    }
+
+    pub fn reduce_sum(&self) -> u8 {
         self.data.reduce_sum()
     }
 
     pub fn reduce_and(&self) -> u8 {
         self.data.reduce_and()
+    }
+
+    pub fn count_nonzero(&self) -> u32 {
+        // _mm_movemask_pi8 is missing from std::arch.
+        // Maybe submit a patch?
+        self.data.simd_gt(u8x8::splat(0)).to_bitmask().count_ones()
     }
 
     pub fn display<T: Enum + Display>(&self) -> String {
@@ -82,6 +99,13 @@ impl<T: Enum> IndexMut<T> for Bundle {
     }
 }
 
+impl Sum for Bundle {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.reduce(|totals, bundle| totals + bundle)
+            .unwrap_or_default()
+    }
+}
+
 impl Add for Bundle {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
@@ -100,16 +124,28 @@ impl Sub for Bundle {
     }
 }
 
+impl AddAssign for Bundle {
+    fn add_assign(&mut self, rhs: Self) {
+        self.data = self.data.saturating_add(rhs.data);
+    }
+}
+
 impl From<&[u8]> for Bundle {
     fn from(value: &[u8]) -> Self {
         Bundle {
-            data: Simd::load_or_default(value),
+            data: u8x8::load_or_default(value),
         }
     }
 }
 
-// pub const BRICK: Bundle = Bundle { data: 1 };
-// pub const GRAIN: Bundle = Bundle { data: 1 << 8 };
-// pub const LUMBER: Bundle = Bundle { data: 1 << 16 };
-// pub const ORE: Bundle = Bundle { data: 1 << 24 };
-// pub const WOOL: Bundle = Bundle { data: 1 << 32 };
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn count_nonzero() {
+        let mut b = Bundle::splat(0);
+        b[0] = 5;
+        assert_eq!(b.count_nonzero(), 1);
+    }
+}

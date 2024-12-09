@@ -38,7 +38,7 @@ impl Stockpile {
 
     pub fn has_purchasable(&self, player: Player, item: Purchasable) -> bool {
         match item {
-            Purchasable::DevCard => self.dev_cards.sum() > 0,
+            Purchasable::DevCard => self.dev_cards.reduce_sum() > 0,
             _ => self.buildings[player][item] > 0,
         }
     }
