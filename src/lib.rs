@@ -106,12 +106,29 @@ impl State {
         todo!()
     }
 
+    /// Current player steals random resource unit from given player
+    fn steal_resource(&mut self, player: Player) {
+        assert_ne!(player, self.current_player());
+    }
+
+    /// "Move robber" action
+    fn move_robber(&mut self, hex_id: HexId) {
+        self.board.move_robber(hex_id);
+        // If more than one player has buildings on dest. hex
+        //     Generate action for curr player to pick who to steal from
+        //     Said action calls steal_resource when applied
+        // Else,
+        //     Immediately call steal_resource on that player
+    }
+
+    /// "Roll dice" action
     fn roll_dice(&mut self) {
         let mut rng = rand::thread_rng();
         let roll: u8 = rng.gen_range(1..=6) + rng.gen_range(1..=6);
 
         if roll == 7 {
-            // Move robber
+            // Generate DiscardResources for everyone with more than 7 res
+            // Generate MoveRobber for curr player (or maybe that's handled by the discard action?)
         } else {
             // Calculate resource production (for each resource, for each player)
             let production = self

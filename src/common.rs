@@ -43,7 +43,7 @@ pub enum Action {
     EndTurn,
 }
 
-#[derive(Debug, Clone, Copy, Enum)]
+#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq)]
 pub enum Player {
     Blue,
     Orange,

@@ -17,8 +17,8 @@ use VertexDir::*;
 type V = u64;
 type E = u128;
 
-#[derive(Debug, Clone, Copy)]
-struct Hex(i8, i8);
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct Hex(i8, i8);
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Vertex(i8, i8, VertexDir);
@@ -193,6 +193,7 @@ pub struct Board {
     settlement_slots: Bitboard<V>,
     road_slots: Bitboard<E>,
     cities: Bitboard<V>,
+    robber_verts: Bitboard<V>, // 8 bytes to store 6 vertices? Or only store hex id but have to do a hex-to-vert lookup at runtime?
 }
 
 impl Clone for Board {
@@ -206,6 +207,7 @@ impl Clone for Board {
             settlement_slots: self.settlement_slots.clone(),
             road_slots: self.road_slots.clone(),
             cities: self.cities.clone(),
+            robber_verts: self.robber_verts.clone(),
         }
     }
 }
@@ -214,7 +216,8 @@ impl Board {
     /// Creates and returns a new Board.
     ///
     /// Internally, a [SimpleBoard] is created and used to populate the bitboards.
-    pub fn new(resources: Vec<Resource>, rolls: Vec<u8>) -> Self {
+    pub fn new(resources: Vec<Option<Resource>>, rolls: Vec<Option<u8>>) -> Self {
+        // TODO: return Result instead
         let simple_board = SimpleBoard::new();
 
         let mut roll_resources: Vec<Vec<Bitboard<V>>> =
@@ -231,7 +234,11 @@ impl Board {
         for (i, hex) in simple_board.hexes.iter().enumerate() {
             let adj = simple_board.vert_bitboard(&hex.vertices());
             hex_to_verts[i] = adj;
-            roll_resources[(rolls[i] - 2) as usize][resources[i] as usize] |= adj;
+
+            if let Some(resource) = resources[i] {
+                let roll = rolls[i].expect("hexes with a resource should also have a roll");
+                roll_resources[(roll - 2) as usize][resource as usize] |= adj;
+            }
         }
 
         // Populate vert-to-* maps
@@ -260,7 +267,6 @@ impl Board {
             simple_board,
         };
         Board {
-            shared_data: Rc::new(shared_data),
             player_buildings: EnumMap::default(),
             player_roads: EnumMap::default(),
             player_settlement_slots: EnumMap::default(),
@@ -268,10 +274,16 @@ impl Board {
             settlement_slots: Bitboard::ones(),
             road_slots: Bitboard::ones(),
             cities: Bitboard::zeros(),
+            robber_verts: shared_data.hex_to_verts[shared_data.simple_board.hex_ids[&Hex(0, 0)]],
+            shared_data: Rc::new(shared_data),
         }
     }
 
     // Helpers
+
+    pub fn hex_id(&self, hex: Hex) -> HexId {
+        self.shared_data.simple_board.hex_ids[&hex]
+    }
 
     pub fn vertex_id(&self, vertex: Vertex) -> VertexId {
         self.shared_data.simple_board.vertex_ids[&vertex]
@@ -332,12 +344,17 @@ impl Board {
         self.cities.add(vertex_id);
     }
 
+    pub fn move_robber(&mut self, hex_id: HexId) {
+        self.robber_verts = self.shared_data.hex_to_verts[hex_id]
+    }
+
     pub fn produce_resources(&self, roll: u8, in_stock: Bundle) -> EnumMap<Player, Bundle> {
         // TODO: Vectorize
         let mut player_bundles: EnumMap<Player, Bundle> = EnumMap::default();
 
         for res in RESOURCES {
-            let resource_verts = self.roll_resource_vertices(roll, res);
+            let mut resource_verts = self.roll_resource_vertices(roll, res);
+            resource_verts &= !self.robber_verts;
             let mut bundle = Bundle::default();
 
             for (player, buildings) in self.player_buildings {
@@ -375,6 +392,7 @@ impl Board {
 #[derive(Debug)]
 struct SimpleBoard {
     hexes: Vec<Hex>,
+    hex_ids: HashMap<Hex, HexId>,
     vertices: Vec<Vertex>,
     vertex_ids: HashMap<Vertex, VertexId>,
     edges: Vec<Edge>,
@@ -403,9 +421,12 @@ impl SimpleBoard {
             }
         }
 
+        let hex_ids: HashMap<Hex, HexId> =
+            hexes.iter().enumerate().map(|(id, &h)| (h, id)).collect();
+
         let mut vertices: Vec<Vertex> = vertices.into_iter().collect();
         vertices.sort_by(|a, b| a.ordering_value().total_cmp(&b.ordering_value()));
-        let vertex_ids: HashMap<Vertex, usize> = vertices
+        let vertex_ids: HashMap<Vertex, VertexId> = vertices
             .iter()
             .enumerate()
             .map(|(id, &v)| (v, id))
@@ -413,11 +434,12 @@ impl SimpleBoard {
 
         let edges: Vec<Edge> = edges.into_iter().collect();
         // TODO: sort edges
-        let edge_ids: HashMap<Edge, usize> =
+        let edge_ids: HashMap<Edge, EdgeId> =
             edges.iter().enumerate().map(|(id, &e)| (e, id)).collect();
 
         SimpleBoard {
             hexes,
+            hex_ids,
             vertices,
             vertex_ids,
             edges,
@@ -474,11 +496,24 @@ mod tests {
     ///
     /// [Catan manual]: https://www.catan.com/sites/default/files/2021-06/catan_base_rules_2020_200707.pdf
     fn setup() -> Board {
-        let resources = vec![
-            Ore, Wool, Lumber, Grain, Brick, Wool, Brick, Grain, Lumber, Ore, Lumber, Ore, Lumber,
-            Ore, Grain, Wool, Brick, Grain, Wool,
-        ];
-        let rolls: Vec<u8> = vec![10, 2, 9, 12, 6, 4, 10, 9, 11, 7, 3, 8, 8, 3, 4, 5, 5, 6, 11];
+        let mut resources: Vec<Option<Resource>> = [
+            Ore, Wool, Lumber, Grain, Brick, Wool, Brick, Grain, Lumber, Ore, // <- Desert
+            Lumber, Ore, Lumber, Ore, Grain, Wool, Brick, Grain, Wool,
+        ]
+        .into_iter()
+        .map(Some)
+        .collect();
+
+        let mut rolls: Vec<Option<u8>> = [
+            10, 2, 9, 12, 6, 4, 10, 9, 11, 7, // <- Desert
+            3, 8, 8, 3, 4, 5, 5, 6, 11,
+        ]
+        .into_iter()
+        .map(Some)
+        .collect();
+
+        resources[9] = None;
+        rolls[9] = None;
 
         let mut b = Board::new(resources, rolls);
         let mut s = |p: Player, v: Vertex| sett(&mut b, p, v);
@@ -545,7 +580,7 @@ mod tests {
 
     #[test]
     fn insufficient_resource_production() {
-        // 2 ore produced for 2 players; 1 in stock; no one gets any
+        // 2 ore produced for more than 1 player; 1 in stock; no one gets any
         // 1 brick produced; 1 in stock; orange gets it per usual
         let mut b = setup();
 
@@ -579,6 +614,44 @@ mod tests {
             White => [0; 5]
         });
         assert_eq!(production, expected);
+    }
+
+    #[test]
+    fn no_desert_production() {
+        let mut b = setup();
+
+        let in_stock = Bundle::splat(10);
+        let before = b.produce_resources(7, in_stock.clone());
+
+        sett(&mut b, Red, Vertex(0, 0, N));
+
+        let after = b.produce_resources(7, in_stock);
+
+        assert_eq!(before, after);
+        assert_eq!(after[Red], Bundle::splat(0));
+    }
+
+    #[test]
+    fn robber_prevents_production() {
+        let mut b = setup();
+
+        let in_stock = Bundle::splat(10);
+        let before = b.produce_resources(6, in_stock.clone());
+
+        b.move_robber(b.hex_id(Hex(0, -1)));
+
+        let after = b.produce_resources(6, in_stock);
+
+        assert_ne!(before, after);
+        assert_eq!(
+            after,
+            to_bundles(enum_map! {
+                Blue => [0; 5],
+                Orange => [0, 1, 0, 0, 0],
+                Red => [0; 5],
+                White => [0; 5]
+            })
+        );
     }
 
     #[test]
