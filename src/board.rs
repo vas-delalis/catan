@@ -639,7 +639,7 @@ mod tests {
         let mut b = setup();
 
         let in_stock = Bundle::splat(10);
-        let before = b.produce_resources(7, in_stock.clone());
+        let before = b.produce_resources(7, in_stock);
 
         sett(&mut b, Red, Vertex(0, 0, N));
 
@@ -654,7 +654,7 @@ mod tests {
         let mut b = setup();
 
         let in_stock = Bundle::splat(10);
-        let before = b.produce_resources(6, in_stock.clone());
+        let before = b.produce_resources(6, in_stock);
 
         b.move_robber(b.hex_id(Hex(0, -1)));
 

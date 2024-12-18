@@ -25,7 +25,7 @@ pub static BUY_COSTS: LazyLock<EnumMap<Purchasable, Bundle>> = LazyLock::new(|| 
 });
 
 /// An [Enum] -> [u8] map equipped with efficient operations.
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub struct Bundle {
     pub data: u8x8,
 }

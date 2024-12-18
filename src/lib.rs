@@ -120,15 +120,15 @@ impl State {
         match action {
             RollDice => self.roll_dice(),
             BuildSettlement(vertex_id) => {
-                // self.stockpiles[player].subtract(cost);
+                self.take(player, BUY_COSTS[Purchasable::Settlement]);
                 self.board.add_settlement(player, vertex_id);
             }
             UpgradeSettlement(vertex_id) => {
-                // self.stockpiles[player].subtract(cost);
+                self.take(player, BUY_COSTS[Purchasable::City]);
                 self.board.upgrade_settlement(vertex_id);
             }
             BuildRoad(edge_id) => {
-                // self.stockpiles[player].subtract(cost);
+                self.take(player, BUY_COSTS[Purchasable::Road]);
                 self.board.add_road(player, edge_id);
             }
             MoveRobber(hex_id) => {
@@ -149,6 +149,7 @@ impl State {
                     self.action_queue
                         .push_back((player, self.get_discard_actions(player)));
                 } else if *self.to_discard.as_array() == [0; 4] {
+                    // Make player who rolled move the robber
                     self.action_queue
                         .push_back((self.whose_turn, self.get_move_robber_actions()));
                 }
@@ -165,13 +166,13 @@ impl State {
 
     /// Transfers resources from bank to player
     fn give(&mut self, player: Player, bundle: Bundle) {
-        self.stockpile.resources -= bundle.clone();
+        self.stockpile.resources -= bundle;
         self.player_data[player].resources += bundle;
     }
 
     /// Transfers resources from player to bank
     fn take(&mut self, player: Player, bundle: Bundle) {
-        self.stockpile.resources += bundle.clone();
+        self.stockpile.resources += bundle;
         self.player_data[player].resources -= bundle;
     }
 
@@ -250,12 +251,10 @@ impl State {
             }
         } else {
             // Calculate resource production (for each resource, for each player)
-            let production = self
-                .board
-                .produce_resources(roll, self.stockpile.resources.clone());
+            let production = self.board.produce_resources(roll, self.stockpile.resources);
 
             for player in PLAYERS {
-                self.give(player, production[player].clone());
+                self.give(player, production[player]);
             }
         }
     }
@@ -355,8 +354,8 @@ mod tests {
 
         let starting_blue = Bundle::from_slice(&[2, 2, 2, 0, 0]);
         let starting_red = Bundle::from_slice(&[2, 2, 0, 0, 0]);
-        s.player_data[Blue].resources = starting_blue.clone();
-        s.player_data[Red].resources = starting_red.clone();
+        s.player_data[Blue].resources = starting_blue;
+        s.player_data[Red].resources = starting_red;
 
         s.handle_dice_roll(7);
 
