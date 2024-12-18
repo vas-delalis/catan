@@ -236,7 +236,7 @@ impl State {
                 let resources = &self.player_data[player].resources;
                 let sum = resources.reduce_sum();
                 if sum > 7 {
-                    skip_discard = true;
+                    skip_discard = false;
                     self.to_discard[player] = sum / 2;
                     self.action_queue
                         .push_back((player, self.get_discard_actions(player)));
