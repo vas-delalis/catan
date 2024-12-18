@@ -31,6 +31,7 @@ pub enum Purchasable {
     DevCard,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Action {
     RollDice,
     BuildSettlement(VertexId),
@@ -38,8 +39,9 @@ pub enum Action {
     BuildRoad(EdgeId),
     BuyDevCard,
     MoveRobber(HexId),
+    StealResource(Player),
     ExchangeResources(((Resource, u8), (Resource, u8))),
-    DiscardResources,
+    DiscardResource(Resource),
     EndTurn,
 }
 

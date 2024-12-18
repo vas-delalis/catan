@@ -11,29 +11,29 @@ use std::{
 
 use crate::{bundle::Bundle, common::*};
 use bitboard::Bitboard;
-use EdgeDir::*;
-use VertexDir::*;
+pub use EdgeDir::*;
+pub use VertexDir::*;
 
 type V = u64;
 type E = u128;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub struct Hex(i8, i8);
+pub struct Hex(pub i8, pub i8);
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct Vertex(i8, i8, VertexDir);
+pub struct Vertex(pub i8, pub i8, pub VertexDir);
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct Edge(i8, i8, EdgeDir);
+pub struct Edge(pub i8, pub i8, pub EdgeDir);
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum VertexDir {
+pub enum VertexDir {
     N,
     S,
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum EdgeDir {
+pub enum EdgeDir {
     W,
     NW,
     NE,
@@ -194,6 +194,7 @@ pub struct Board {
     road_slots: Bitboard<E>,
     cities: Bitboard<V>,
     robber_verts: Bitboard<V>, // 8 bytes to store 6 vertices? Or only store hex id but have to do a hex-to-vert lookup at runtime?
+    robber: HexId,             // ...might have to store robber hex id anyway
 }
 
 impl Clone for Board {
@@ -208,6 +209,7 @@ impl Clone for Board {
             road_slots: self.road_slots.clone(),
             cities: self.cities.clone(),
             robber_verts: self.robber_verts.clone(),
+            robber: self.robber.clone(),
         }
     }
 }
@@ -266,6 +268,9 @@ impl Board {
             roll_resources,
             simple_board,
         };
+
+        let center_hex_id = shared_data.simple_board.hex_ids[&Hex(0, 0)];
+
         Board {
             player_buildings: EnumMap::default(),
             player_roads: EnumMap::default(),
@@ -274,7 +279,8 @@ impl Board {
             settlement_slots: Bitboard::ones(),
             road_slots: Bitboard::ones(),
             cities: Bitboard::zeros(),
-            robber_verts: shared_data.hex_to_verts[shared_data.simple_board.hex_ids[&Hex(0, 0)]],
+            robber_verts: shared_data.hex_to_verts[center_hex_id],
+            robber: center_hex_id,
             shared_data: Rc::new(shared_data),
         }
     }
@@ -299,6 +305,14 @@ impl Board {
 
     pub fn edge(&self, id: EdgeId) -> Edge {
         self.shared_data.simple_board.edges[id]
+    }
+
+    pub fn players_on_hex(&self, hex_id: HexId) -> Vec<Player> {
+        let verts = self.shared_data.hex_to_verts[hex_id];
+        PLAYERS
+            .into_iter()
+            .filter(|&p| (self.player_buildings[p] & verts) > Bitboard::zeros())
+            .collect()
     }
 
     /// Get the set of vertices that receive a given resource on a given roll.
@@ -344,12 +358,16 @@ impl Board {
         self.cities.add(vertex_id);
     }
 
+    pub fn robber_hex_id(&self) -> HexId {
+        self.robber
+    }
+
     pub fn move_robber(&mut self, hex_id: HexId) {
         self.robber_verts = self.shared_data.hex_to_verts[hex_id]
     }
 
     pub fn produce_resources(&self, roll: u8, in_stock: Bundle) -> EnumMap<Player, Bundle> {
-        // TODO: Vectorize
+        // TODO: optimize
         let mut player_bundles: EnumMap<Player, Bundle> = EnumMap::default();
 
         for res in RESOURCES {

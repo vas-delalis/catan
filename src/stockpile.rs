@@ -21,8 +21,10 @@ impl Stockpile {
         })
         .into_array();
 
+        let resources = [19; 5];
+
         Stockpile {
-            resources: Bundle::from_slice(&[19; 5]),
+            resources: Bundle::from_slice(&resources),
             dev_cards: Bundle::from_slice(&cards),
             dev_card_rand_index: WeightedIndex::new(cards).unwrap(),
             buildings: enum_map! {

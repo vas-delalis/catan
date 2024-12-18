@@ -1,8 +1,13 @@
 use std::{
+    cmp::Ordering,
     fmt::Display,
     iter::Sum,
-    ops::{Add, AddAssign, Index, IndexMut, Sub},
-    simd::{cmp::SimdPartialOrd, num::SimdUint, u8x8},
+    ops::{Add, AddAssign, Index, IndexMut, Sub, SubAssign},
+    simd::{
+        cmp::{SimdPartialEq, SimdPartialOrd},
+        num::SimdUint,
+        u8x8,
+    },
     sync::LazyLock,
 };
 
@@ -37,9 +42,7 @@ impl Bundle {
     }
 
     pub fn from_slice(src: &[u8]) -> Self {
-        Bundle {
-            data: u8x8::from_slice(src),
-        }
+        src.into()
     }
 
     pub fn reduce_sum(&self) -> u8 {
@@ -130,10 +133,30 @@ impl AddAssign for Bundle {
     }
 }
 
+impl SubAssign for Bundle {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.data = self.data.saturating_sub(rhs.data);
+    }
+}
+
 impl From<&[u8]> for Bundle {
     fn from(value: &[u8]) -> Self {
         Bundle {
             data: u8x8::load_or_default(value),
+        }
+    }
+}
+
+impl PartialOrd for Bundle {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.data.simd_lt(other.data).all() {
+            Some(Ordering::Less)
+        } else if self.data.simd_gt(other.data).all() {
+            Some(Ordering::Greater)
+        } else if self.data.simd_eq(other.data).all() {
+            Some(Ordering::Equal)
+        } else {
+            None
         }
     }
 }
