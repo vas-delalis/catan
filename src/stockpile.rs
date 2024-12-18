@@ -60,7 +60,6 @@ impl Stockpile {
     }
 
     pub fn take(&mut self, player: Player, item: Purchasable) -> Option<DevCard> {
-        let mut rng = thread_rng();
         match item {
             Purchasable::DevCard => Some(self.take_dev_card()),
             _ => {

@@ -113,7 +113,7 @@ impl Add for Bundle {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
         Bundle {
-            data: self.data.saturating_add(rhs.data),
+            data: self.data + rhs.data,
         }
     }
 }
@@ -122,20 +122,20 @@ impl Sub for Bundle {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
         Bundle {
-            data: self.data.saturating_sub(rhs.data),
+            data: self.data - rhs.data,
         }
     }
 }
 
 impl AddAssign for Bundle {
     fn add_assign(&mut self, rhs: Self) {
-        self.data = self.data.saturating_add(rhs.data);
+        self.data += rhs.data;
     }
 }
 
 impl SubAssign for Bundle {
     fn sub_assign(&mut self, rhs: Self) {
-        self.data = self.data.saturating_sub(rhs.data);
+        self.data -= rhs.data;
     }
 }
 
