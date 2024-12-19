@@ -402,7 +402,10 @@ impl Board {
         self.robber_verts = self.shared_data.hex_to_verts[hex_id]
     }
 
+    /// Returns the amount of each resource needed to trade with the bank (maritime trade).
     pub fn exchange_ratios(&self, player: Player) -> Bundle {
+        // Default is 4:1. Generic harbors reduce it to 3:1.
+        // Resource-specific harbors reduce it to 2:1 for that resource.
         let buildings = self.player_buildings[player];
         let mut ratios = Bundle::splat(
             if buildings & self.shared_data.generic_harbors > Bitboard::zeros() {

@@ -63,6 +63,8 @@ impl State {
         }
     }
 
+    // === Helpers ===
+
     /// Returns the player who picks the next action.
     fn current_player(&self) -> Player {
         if let Some(player) = self.turn_override {
@@ -70,6 +72,20 @@ impl State {
         }
         self.whose_turn
     }
+
+    /// Transfers resources from bank to player
+    fn give(&mut self, player: Player, bundle: Bundle) {
+        self.stockpile.resources -= bundle;
+        self.player_data[player].resources += bundle;
+    }
+
+    /// Transfers resources from player to bank
+    fn take(&mut self, player: Player, bundle: Bundle) {
+        self.stockpile.resources += bundle;
+        self.player_data[player].resources -= bundle;
+    }
+
+    // === Action generation ===
 
     pub fn get_actions(&mut self) -> Vec<Action> {
         let player = self.current_player();
@@ -84,10 +100,12 @@ impl State {
         }
 
         let mut actions = Vec::with_capacity(4);
+        // RollDice
         if !self.has_rolled {
             actions.push(RollDice);
         }
 
+        // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
         for (item, cost) in BUY_COSTS.iter() {
             if self.stockpile.has_purchasable(player, item)
                 && cost.data.simd_le(self.stockpile.resources.data).all()
@@ -110,15 +128,59 @@ impl State {
                 }
             }
         }
+
+        // ExchangeResource (maritime trade)
+        actions.append(&mut self.get_exchange_actions(player));
+
         actions
     }
+
+    fn get_move_robber_actions(&self) -> Vec<Action> {
+        (0..N_HEXES)
+            .filter(|&id| id != self.board.robber_hex_id())
+            .map(|id| MoveRobber(id))
+            .collect()
+    }
+
+    fn get_discard_actions(&self, player: Player) -> Vec<Action> {
+        RESOURCES
+            .into_iter()
+            .filter(|&r| self.player_data[player].resources[r] > 0)
+            .map(|r| DiscardResource(r))
+            .collect()
+    }
+
+    /// Returns possible actions for exchanging resources (maritime trade).
+    fn get_exchange_actions(&self, player: Player) -> Vec<Action> {
+        let mut actions = vec![];
+        let ratios = self.board.exchange_ratios(player);
+
+        for res1 in RESOURCES {
+            // Check if player has enough of res1
+            if self.player_data[player].resources[res1] < ratios[res1] {
+                continue;
+            }
+            for res2 in RESOURCES {
+                // Prevent nonsensical trades and ensure bank has enough of res2 in stock
+                if res1 == res2 || self.stockpile.resources[res2] == 0 {
+                    continue;
+                }
+                actions.push(ExchangeResources(((res1, ratios[res1]), res2)));
+            }
+        }
+        actions
+    }
+
+    // === Action execution/application ===
 
     pub fn apply_acton(&mut self, action: Action) {
         use Action::*;
 
         let player = self.current_player();
         match action {
-            RollDice => self.roll_dice(),
+            RollDice => {
+                self.handle_dice_roll(self.roll_dice());
+            }
             BuildSettlement(vertex_id) => {
                 self.take(player, BUY_COSTS[Purchasable::Settlement]);
                 self.board.add_settlement(player, vertex_id);
@@ -164,18 +226,6 @@ impl State {
         }
     }
 
-    /// Transfers resources from bank to player
-    fn give(&mut self, player: Player, bundle: Bundle) {
-        self.stockpile.resources -= bundle;
-        self.player_data[player].resources += bundle;
-    }
-
-    /// Transfers resources from player to bank
-    fn take(&mut self, player: Player, bundle: Bundle) {
-        self.stockpile.resources += bundle;
-        self.player_data[player].resources -= bundle;
-    }
-
     /// Player steals random resource card from target
     fn steal_resource(&mut self, player: Player, target: Player) {
         assert_ne!(player, target);
@@ -195,13 +245,6 @@ impl State {
         player_bundle[res] += 1;
     }
 
-    fn get_move_robber_actions(&self) -> Vec<Action> {
-        (0..N_HEXES)
-            .filter(|&id| id != self.board.robber_hex_id())
-            .map(|id| MoveRobber(id))
-            .collect()
-    }
-
     /// Moves the robber and returns follow-up StealResource actions.
     fn move_robber(&mut self, hex_id: HexId) -> Vec<Action> {
         self.board.move_robber(hex_id);
@@ -212,19 +255,10 @@ impl State {
             .collect()
     }
 
-    fn get_discard_actions(&self, player: Player) -> Vec<Action> {
-        RESOURCES
-            .into_iter()
-            .filter(|&r| self.player_data[player].resources[r] > 0)
-            .map(|r| DiscardResource(r))
-            .collect()
-    }
-
-    /// "Roll dice" action
-    fn roll_dice(&mut self) {
+    /// Returns the sum of two fair dice rolls.
+    fn roll_dice(&self) -> u8 {
         let mut rng = rand::thread_rng();
-        let roll: u8 = rng.gen_range(1..=6) + rng.gen_range(1..=6);
-        self.handle_dice_roll(roll);
+        rng.gen_range(1..=6) + rng.gen_range(1..=6)
     }
 
     fn handle_dice_roll(&mut self, roll: u8) {
@@ -252,7 +286,6 @@ impl State {
         } else {
             // Calculate resource production (for each resource, for each player)
             let production = self.board.produce_resources(roll, self.stockpile.resources);
-
             for player in PLAYERS {
                 self.give(player, production[player]);
             }
@@ -371,5 +404,22 @@ mod tests {
             s.player_data[Red].resources.reduce_sum(),
             starting_red.reduce_sum() - 1
         );
+    }
+
+    #[test]
+    fn exchange_actions() {
+        let mut s = setup();
+
+        s.player_data[Blue].resources = Bundle::from_slice(&[4, 2, 0, 0, 0]);
+        sett(&mut s, Blue, Vertex(2, -3, S)); // Grain harbor
+        sett(&mut s, Blue, Vertex(-2, 0, N)); // Lumber harbor
+        let actions = s.get_exchange_actions(Blue);
+        assert_eq!(actions.len(), 8); // 4 from Brick, 4 from Grain
+        assert!(&actions[..4] // 4 Brick for 1 of something else
+            .into_iter()
+            .all(|a| matches!(a, ExchangeResources(((Brick, 4), _)))));
+        assert!(&actions[4..] // 2 Grain for 1 of something else
+            .into_iter()
+            .all(|a| matches!(a, ExchangeResources(((Grain, 2), _)))));
     }
 }

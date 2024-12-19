@@ -12,7 +12,7 @@ pub const N_ROLLS: usize = 11;
 pub use Player::*;
 pub use Resource::*;
 
-#[derive(Debug, Clone, Copy, Enum)]
+#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq)]
 pub enum Resource {
     Brick,
     Grain,
