@@ -39,9 +39,9 @@ pub enum Action {
     BuildRoad(EdgeId),
     BuyDevCard,
     MoveRobber(HexId),
-    StealResource(Player),
-    ExchangeResources(((Resource, u8), (Resource, u8))),
     DiscardResource(Resource),
+    StealResource(Player),
+    ExchangeResources(((Resource, u8), Resource)),
     EndTurn,
 }
 
