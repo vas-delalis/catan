@@ -8,9 +8,8 @@ mod stockpile;
 pub use board::*;
 pub use common::*;
 
-use std::{collections::VecDeque, simd::cmp::SimdPartialOrd};
+use std::simd::cmp::SimdPartialOrd;
 
-use enum_map::enum_map;
 use rand::distributions::WeightedIndex;
 use Action::*;
 
@@ -21,21 +20,27 @@ use {
     stockpile::Stockpile,
 };
 
-// enum Phase {
-//     Setup, // Each player's second settlement produces resources at the end of setup
-// }
+enum Phase {
+    Normal,
+    Setup, // Each player's second settlement produces resources at the end of setup
+    Discarding(Bundle), // Remaining cards to discard per player
+    MovingRobber,
+    StealingResources(HexId),
+    RoadBuilding(u8), // Remaining roads to build
+    YearOfPlenty(u8), // Remaining resource units to take
+    Monopoly,
+    Trading(),
+}
 
 pub struct State {
     stockpile: Stockpile,
     board: Board,
     whose_turn: Player,
-    turn_override: Option<Player>, // Sometimes you have to play when it's not your turn
     turn_order: [Player; 4],
     player_data: EnumMap<Player, PlayerData>,
     has_rolled: bool,
     has_played_dev_card: bool,
-    action_queue: VecDeque<(Player, Vec<Action>)>,
-    to_discard: EnumMap<Player, u8>,
+    phase: Phase,
     // TODO: keep track of freshly bought dev cards
 }
 
@@ -52,25 +57,26 @@ impl State {
             board: Board::new(resources, rolls),
             whose_turn: PLAYERS[0],
             turn_order: PLAYERS,
-            turn_override: None,
             player_data: EnumMap::from_fn(|_| PlayerData {
                 resources: Bundle::splat(0),
             }),
             has_rolled: false,
             has_played_dev_card: false,
-            action_queue: VecDeque::with_capacity(2),
-            to_discard: enum_map! { _ => 0 },
+            phase: Phase::Normal,
         }
     }
 
     // === Helpers ===
 
     /// Returns the player who picks the next action.
-    fn current_player(&self) -> Player {
-        if let Some(player) = self.turn_override {
-            return player;
+    pub fn current_player(&self) -> Player {
+        match self.phase {
+            Phase::Discarding(remaining) => *PLAYERS.iter().find(|&p| remaining[*p] > 0).unwrap(),
+            Phase::Setup => {
+                todo!()
+            }
+            _ => self.whose_turn,
         }
-        self.whose_turn
     }
 
     /// Transfers resources from bank to player
@@ -91,54 +97,71 @@ impl State {
         let player = self.current_player();
         let player_data = &self.player_data[player];
 
-        // Queued actions first
-        if let Some((player, actions)) = self.action_queue.pop_front() {
-            self.turn_override = Some(player);
-            return actions;
-        } else {
-            self.turn_override = None;
-        }
+        match self.phase {
+            Phase::Normal => {
+                let mut actions = vec![];
+                if !self.has_rolled {
+                    actions.push(RollDice);
+                }
 
-        let mut actions = Vec::with_capacity(4);
-        // RollDice
-        if !self.has_rolled {
-            actions.push(RollDice);
-        }
-
-        // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
-        for (item, cost) in BUY_COSTS.iter() {
-            if self.stockpile.has_purchasable(player, item)
-                && cost.data.simd_le(self.stockpile.resources.data).all()
-                && cost.data.simd_le(player_data.resources.data).all()
-            {
-                match item {
-                    Purchasable::DevCard => actions.push(BuyDevCard),
-                    Purchasable::Settlement => {
-                        let slots = self.board.available_settlements(player);
-                        actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
-                    }
-                    Purchasable::City => {
-                        let settlements = self.board.available_cities(player);
-                        actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
-                    }
-                    Purchasable::Road => {
-                        let slots = self.board.available_roads(player);
-                        actions.extend(slots.map(|e_id| BuildRoad(e_id)));
+                // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
+                for (item, cost) in BUY_COSTS.iter() {
+                    if self.stockpile.has_purchasable(player, item)
+                        && cost.data.simd_le(self.stockpile.resources.data).all()
+                        && cost.data.simd_le(player_data.resources.data).all()
+                    {
+                        match item {
+                            Purchasable::DevCard => actions.push(BuyDevCard),
+                            Purchasable::Settlement => {
+                                let slots = self.board.available_settlements(player);
+                                actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
+                            }
+                            Purchasable::City => {
+                                let settlements = self.board.available_cities(player);
+                                actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
+                            }
+                            Purchasable::Road => {
+                                let slots = self.board.available_roads(player);
+                                actions.extend(slots.map(|edge_id| BuildRoad(edge_id)));
+                            }
+                        }
                     }
                 }
+
+                // ExchangeResource (maritime trade)
+                actions.append(&mut self.get_exchange_actions(player));
+                actions
             }
+            Phase::Setup => todo!(),
+            Phase::StealingResources(hex_id) => self.get_steal_actions(hex_id),
+            Phase::Discarding(_) => self.get_discard_actions(self.current_player()),
+            Phase::MovingRobber => self.get_robber_actions(),
+            Phase::RoadBuilding(remaining) => {
+                let slots = self.board.available_roads(player);
+                assert!(slots.count_ones() > 0);
+                slots
+                    .take(remaining as usize)
+                    .map(|edge_id| BuildRoad(edge_id))
+                    .collect()
+            }
+            Phase::YearOfPlenty(_) => todo!(),
+            Phase::Monopoly => todo!(),
+            Phase::Trading() => todo!(),
         }
-
-        // ExchangeResource (maritime trade)
-        actions.append(&mut self.get_exchange_actions(player));
-
-        actions
     }
 
-    fn get_move_robber_actions(&self) -> Vec<Action> {
+    fn get_robber_actions(&self) -> Vec<Action> {
         (0..N_HEXES)
             .filter(|&id| id != self.board.robber_hex_id())
             .map(|id| MoveRobber(id))
+            .collect()
+    }
+
+    fn get_steal_actions(&self, hex_id: HexId) -> Vec<Action> {
+        self.board
+            .players_on_hex(hex_id)
+            .into_iter()
+            .map(|p| StealResource(p))
             .collect()
     }
 
@@ -190,31 +213,40 @@ impl State {
                 self.board.upgrade_settlement(vertex_id);
             }
             BuildRoad(edge_id) => {
-                self.take(player, BUY_COSTS[Purchasable::Road]);
                 self.board.add_road(player, edge_id);
+                self.phase = match self.phase {
+                    Phase::RoadBuilding(1) => {
+                        self.take(player, BUY_COSTS[Purchasable::Road]);
+                        Phase::Normal
+                    }
+                    Phase::RoadBuilding(remaining) => Phase::RoadBuilding(remaining - 1),
+                    Phase::Setup => Phase::Setup,
+                    _ => panic!("tried to build road in invalid phase"),
+                }
             }
             MoveRobber(hex_id) => {
-                let steal_actions = self.move_robber(hex_id);
-                self.action_queue.push_back((player, steal_actions));
+                self.board.move_robber(hex_id);
+                self.phase = Phase::StealingResources(hex_id);
             }
             StealResource(target) => {
                 self.steal_resource(self.current_player(), target);
+                self.phase = Phase::Normal;
             }
             DiscardResource(res) => {
                 let mut bundle = Bundle::splat(0);
                 bundle[res] += 1;
                 self.take(player, bundle);
-                self.to_discard[player] -= 1;
-
-                if self.to_discard[player] > 0 {
-                    // Continue until we've discarded enough cards
-                    self.action_queue
-                        .push_back((player, self.get_discard_actions(player)));
-                } else if *self.to_discard.as_array() == [0; 4] {
-                    // Make player who rolled move the robber
-                    self.action_queue
-                        .push_back((self.whose_turn, self.get_move_robber_actions()));
-                }
+                self.phase = match self.phase {
+                    Phase::Discarding(mut remaining) => {
+                        remaining[player] -= 1;
+                        if remaining.reduce_sum() == 0 {
+                            Phase::MovingRobber
+                        } else {
+                            Phase::Discarding(remaining)
+                        }
+                    }
+                    _ => panic!("tried to discard in invalid phase"),
+                };
             }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
@@ -245,16 +277,6 @@ impl State {
         player_bundle[res] += 1;
     }
 
-    /// Moves the robber and returns follow-up StealResource actions.
-    fn move_robber(&mut self, hex_id: HexId) -> Vec<Action> {
-        self.board.move_robber(hex_id);
-        self.board
-            .players_on_hex(hex_id)
-            .into_iter()
-            .map(|p| StealResource(p))
-            .collect()
-    }
-
     /// Returns the sum of two fair dice rolls.
     fn roll_dice(&self) -> u8 {
         let mut rng = rand::thread_rng();
@@ -264,25 +286,19 @@ impl State {
     fn handle_dice_roll(&mut self, roll: u8) {
         self.has_rolled = true;
         if roll == 7 {
-            // Generate a DiscardResource for everyone with more than 7 res
-            // The action will then queue more of itself until to_discard == 0
-            let mut skip_discard = true;
+            let mut to_discard = Bundle::splat(0);
             for player in PLAYERS {
                 let resources = &self.player_data[player].resources;
                 let sum = resources.reduce_sum();
                 if sum > 7 {
-                    skip_discard = false;
-                    self.to_discard[player] = sum / 2;
-                    self.action_queue
-                        .push_back((player, self.get_discard_actions(player)));
+                    to_discard[player] = sum / 2;
                 }
             }
-            if skip_discard {
-                self.action_queue
-                    .push_back((self.whose_turn, self.get_move_robber_actions()));
+            self.phase = if to_discard.reduce_sum() == 0 {
+                Phase::MovingRobber
             } else {
-                // No-op. `MoveRobber`s are instead queued by the last discard action.
-            }
+                Phase::Discarding(to_discard)
+            };
         } else {
             // Calculate resource production (for each resource, for each player)
             let production = self.board.produce_resources(roll, self.stockpile.resources);
@@ -360,13 +376,10 @@ mod tests {
     #[test]
     fn resource_discarding() {
         let mut s = setup();
-
         s.player_data[Blue].resources = Bundle::from_slice(&[2, 2, 2, 2, 0]);
         s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
         s.player_data[Red].resources = Bundle::from_slice(&[2, 2, 0, 0, 0]);
-
         s.handle_dice_roll(7);
-
         let b = DiscardResource(Brick);
         let g = DiscardResource(Grain);
         let o = DiscardResource(Ore);
@@ -382,37 +395,51 @@ mod tests {
     }
 
     #[test]
-    fn resource_stealing() {
+    fn steal_actions() {
         let mut s = setup();
+        s.handle_dice_roll(7);
 
+        // Move robber to hex with red & white settlements
+        s.apply_acton(MoveRobber(4));
+
+        let actions = s.get_actions();
+        assert_eq!(actions.len(), 2);
+        assert!(actions.contains(&StealResource(Red)));
+        assert!(actions.contains(&StealResource(White)));
+    }
+
+    #[test]
+    fn steal_resource() {
+        let mut s = setup();
         let starting_blue = Bundle::from_slice(&[2, 2, 2, 0, 0]);
         let starting_red = Bundle::from_slice(&[2, 2, 0, 0, 0]);
         s.player_data[Blue].resources = starting_blue;
         s.player_data[Red].resources = starting_red;
-
         s.handle_dice_roll(7);
+        s.apply_acton(MoveRobber(4));
 
-        // Rob a hex that Red and White are on. Choose to steal from Red.
-        apply_actions(&mut s, vec![MoveRobber(4), StealResource(Red)]);
+        // Blue steals from red
+        s.apply_acton(StealResource(Red));
 
-        // Blue gains 1, red loses 1 of something
-        assert_eq!(
-            s.player_data[Blue].resources.reduce_sum(),
-            starting_blue.reduce_sum() + 1
-        );
+        // Blue gains 1, red loses 1. Stolen resource is Brick or Grain, since that's all red had.
         assert_eq!(
             s.player_data[Red].resources.reduce_sum(),
             starting_red.reduce_sum() - 1
+        );
+        assert!(
+            s.player_data[Blue].resources[Brick] == 3 || s.player_data[Blue].resources[Grain] == 3
         );
     }
 
     #[test]
     fn exchange_actions() {
         let mut s = setup();
-
         s.player_data[Blue].resources = Bundle::from_slice(&[4, 2, 0, 0, 0]);
+
+        // Add harbors
         sett(&mut s, Blue, Vertex(2, -3, S)); // Grain harbor
         sett(&mut s, Blue, Vertex(-2, 0, N)); // Lumber harbor
+
         let actions = s.get_exchange_actions(Blue);
         assert_eq!(actions.len(), 8); // 4 from Brick, 4 from Grain
         assert!(&actions[..4] // 4 Brick for 1 of something else

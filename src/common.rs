@@ -31,21 +31,25 @@ pub enum Purchasable {
     DevCard,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     RollDice,
     BuildSettlement(VertexId),
     UpgradeSettlement(VertexId),
     BuildRoad(EdgeId),
     BuyDevCard,
+    PlayDevCard(DevCard),
     MoveRobber(HexId),
     DiscardResource(Resource),
     StealResource(Player),
     ExchangeResources(((Resource, u8), Resource)),
+    ProposeTrade(((Resource, u8), (Resource, u8))),
+    AcceptTrade(Player),
+    RejectTrade(Player),
     EndTurn,
 }
 
-#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Player {
     Blue,
     Orange,
@@ -55,7 +59,7 @@ pub enum Player {
 
 pub const PLAYERS: [Player; 4] = [Player::Blue, Player::Orange, Player::Red, Player::White];
 
-#[derive(Debug, Enum, Clone, Copy)]
+#[derive(Debug, Enum, Clone, Copy, PartialEq, Eq)]
 pub enum DevCard {
     Knight,
     VictoryPoint,
