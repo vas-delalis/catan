@@ -45,6 +45,13 @@ impl Stockpile {
         }
     }
 
+    pub fn purchasable_count(&self, player: Player, item: Purchasable) -> u8 {
+        match item {
+            Purchasable::DevCard => self.dev_cards.reduce_sum(),
+            _ => self.buildings[player][item],
+        }
+    }
+
     pub fn return_settlement(&mut self, player: Player) {
         self.buildings[player][Purchasable::Settlement] += 1
     }

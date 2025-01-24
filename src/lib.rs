@@ -8,7 +8,10 @@ mod stockpile;
 pub use board::*;
 pub use common::*;
 
-use std::simd::cmp::SimdPartialOrd;
+use std::{
+    cmp::min,
+    simd::{cmp::SimdPartialOrd, num::SimdUint},
+};
 
 use rand::distributions::WeightedIndex;
 use Action::*;
@@ -38,6 +41,9 @@ pub struct State {
     whose_turn: Player,
     turn_order: [Player; 4],
     player_data: EnumMap<Player, PlayerData>,
+    armies: Bundle,
+    victory_point_cards: Bundle,
+    army_leader: Option<Player>,
     has_rolled: bool,
     has_played_dev_card: bool,
     phase: Phase,
@@ -60,6 +66,9 @@ impl State {
             player_data: EnumMap::from_fn(|_| PlayerData {
                 resources: Bundle::splat(0),
             }),
+            armies: Bundle::splat(0),
+            victory_point_cards: Bundle::splat(0),
+            army_leader: None,
             has_rolled: false,
             has_played_dev_card: false,
             phase: Phase::Normal,
@@ -77,6 +86,15 @@ impl State {
             }
             _ => self.whose_turn,
         }
+    }
+
+    /// Returns the a player's victory points.
+    ///
+    /// 1 per settlement; 2 per city; 1 per VP card; 2 for largest army; 2 for longest road.
+    fn victory_points(&self, player: Player) -> u32 {
+        let from_board = self.board.victory_points(player);
+        let largest_army = 2 * (self.army_leader == Some(player)) as u32;
+        from_board + self.victory_point_cards[player] as u32 + largest_army
     }
 
     /// Transfers resources from bank to player
@@ -248,6 +266,9 @@ impl State {
                     _ => panic!("tried to discard in invalid phase"),
                 };
             }
+            PlayDevCard(card) => {
+                self.play_progress_card(card);
+            }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
                 // TODO: reset state variables
@@ -255,6 +276,40 @@ impl State {
                 self.has_played_dev_card = false;
             }
             _ => {}
+        }
+    }
+
+    fn play_progress_card(&mut self, card: DevCard) {
+        use DevCard::*;
+        match card {
+            RoadBuilding => {
+                let to_build = min(
+                    2,
+                    self.stockpile
+                        .purchasable_count(self.whose_turn, Purchasable::Road),
+                );
+                self.phase = Phase::RoadBuilding(to_build);
+            }
+            Knight => {
+                self.phase = Phase::MovingRobber;
+
+                let old_max = self.armies.data.reduce_max();
+                let army = &mut self.armies[self.whose_turn];
+                *army += 1;
+                if *army >= 3 && *army > old_max {
+                    self.army_leader = Some(self.whose_turn);
+                }
+            }
+            Monopoly => {
+                // Choose a resource type. Take everyone's resource units of that type.
+                todo!();
+            }
+            YearOfPlenty => {
+                // Take min(2, bank total) resource units from the bank.
+                // let to_take = min(2, self.stockpile.resources.reduce_sum());
+                todo!();
+            }
+            _ => panic!("tried to play unplayable dev card"),
         }
     }
 
@@ -375,6 +430,7 @@ mod tests {
 
     #[test]
     fn resource_discarding() {
+        // TODO: split
         let mut s = setup();
         s.player_data[Blue].resources = Bundle::from_slice(&[2, 2, 2, 2, 0]);
         s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
@@ -395,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn steal_actions() {
+    fn must_steal_after_moving_robber() {
         let mut s = setup();
         s.handle_dice_roll(7);
 
@@ -409,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn steal_resource() {
+    fn stealing_transfers_one_resource() {
         let mut s = setup();
         let starting_blue = Bundle::from_slice(&[2, 2, 2, 0, 0]);
         let starting_red = Bundle::from_slice(&[2, 2, 0, 0, 0]);
@@ -433,6 +489,7 @@ mod tests {
 
     #[test]
     fn exchange_actions() {
+        // TODO: split
         let mut s = setup();
         s.player_data[Blue].resources = Bundle::from_slice(&[4, 2, 0, 0, 0]);
 
@@ -448,5 +505,91 @@ mod tests {
         assert!(&actions[4..] // 2 Grain for 1 of something else
             .into_iter()
             .all(|a| matches!(a, ExchangeResources(((Grain, 2), _)))));
+    }
+
+    #[test]
+    fn road_building_card_returns_to_normal_phase() {
+        let mut s = setup();
+        s.play_progress_card(DevCard::RoadBuilding);
+
+        s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
+        s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NW))));
+
+        // An attempt at an implementation-independent way to check if we're back in normal phase
+        let actions = s.get_actions();
+        let can_roll_dice = actions.iter().any(|a| matches!(a, RollDice));
+        assert!(can_roll_dice || s.has_rolled);
+    }
+
+    #[test]
+    fn must_build_roads_after_playing_road_building_card() {
+        let mut s = setup();
+
+        s.play_progress_card(DevCard::RoadBuilding);
+
+        let actions = s.get_actions();
+        assert!(
+            actions.iter().all(|a| matches!(a, BuildRoad(_))),
+            "all available actions should be BuildRoad"
+        );
+    }
+
+    #[test]
+    fn roads_from_road_building_card_are_free() {
+        let mut s = setup();
+        let starting_resources = Bundle::splat(5);
+        s.player_data[Blue].resources = starting_resources;
+        s.play_progress_card(DevCard::RoadBuilding);
+
+        s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
+
+        assert_eq!(
+            s.player_data[Blue].resources, starting_resources,
+            "resources should remain unchanged after building road"
+        );
+    }
+
+    #[test]
+    fn must_move_robber_after_playing_knight() {
+        let mut s = setup();
+
+        s.play_progress_card(DevCard::Knight);
+
+        let actions = s.get_actions();
+        assert!(
+            actions.iter().all(|a| matches!(a, MoveRobber(_))),
+            "all available actions should be MoveRobber"
+        );
+    }
+
+    #[test]
+    fn first_with_size_3_army_gets_points() {
+        let mut s = setup();
+        s.play_progress_card(DevCard::Knight);
+        s.play_progress_card(DevCard::Knight);
+        let before = s.victory_points(Blue);
+
+        s.play_progress_card(DevCard::Knight);
+
+        let after = s.victory_points(Blue);
+        assert_eq!(after - before, 2);
+    }
+
+    #[test]
+    fn surpassing_army_leader_transfers_points() {
+        let mut s = setup();
+        s.army_leader = Some(Red);
+        s.armies[Red] = 3;
+        s.armies[Blue] = 3; // (Red got to 3 before Blue)
+        let b_before = s.victory_points(Blue);
+        let r_before = s.victory_points(Red);
+
+        // Blue plays a knight
+        s.play_progress_card(DevCard::Knight);
+
+        let b_after = s.victory_points(Blue);
+        let r_after = s.victory_points(Red);
+        assert_eq!(b_after - b_before, 2); // Up 2
+        assert_eq!(r_before - r_after, 2); // Down 2
     }
 }
