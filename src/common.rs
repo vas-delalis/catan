@@ -42,6 +42,7 @@ pub enum Action {
     MoveRobber(HexId),
     DiscardResource(Resource),
     StealResource(Player),
+    Monopolize(Resource),
     ExchangeResources(((Resource, u8), Resource)),
     ProposeTrade(((Resource, u8), (Resource, u8))),
     AcceptTrade(Player),

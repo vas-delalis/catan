@@ -146,6 +146,8 @@ impl State {
                     }
                 }
 
+                // TODO: PlayDevCard
+
                 // ExchangeResource (maritime trade)
                 actions.append(&mut self.get_exchange_actions(player));
                 actions
@@ -163,7 +165,7 @@ impl State {
                     .collect()
             }
             Phase::YearOfPlenty(_) => todo!(),
-            Phase::Monopoly => todo!(),
+            Phase::Monopoly => RESOURCES.into_iter().map(|r| Monopolize(r)).collect(),
             Phase::Trading() => todo!(),
         }
     }
@@ -267,7 +269,21 @@ impl State {
                 };
             }
             PlayDevCard(card) => {
-                self.play_progress_card(card);
+                self.play_dev_card(card);
+            }
+            Monopolize(res) => {
+                // Take all of res from other players
+                let mut total = 0;
+                for p in PLAYERS {
+                    if p == player {
+                        continue;
+                    }
+                    let count = self.player_data[p].resources[res];
+                    total += count;
+                    self.player_data[p].resources[res] = 0;
+                }
+                self.player_data[player].resources[res] += total;
+                self.phase = Phase::Normal;
             }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
@@ -279,7 +295,7 @@ impl State {
         }
     }
 
-    fn play_progress_card(&mut self, card: DevCard) {
+    fn play_dev_card(&mut self, card: DevCard) {
         use DevCard::*;
         match card {
             RoadBuilding => {
@@ -302,7 +318,7 @@ impl State {
             }
             Monopoly => {
                 // Choose a resource type. Take everyone's resource units of that type.
-                todo!();
+                self.phase = Phase::Monopoly;
             }
             YearOfPlenty => {
                 // Take min(2, bank total) resource units from the bank.
@@ -311,6 +327,8 @@ impl State {
             }
             _ => panic!("tried to play unplayable dev card"),
         }
+        self.has_played_dev_card = true;
+        // TODO: remove card
     }
 
     /// Player steals random resource card from target
@@ -510,7 +528,7 @@ mod tests {
     #[test]
     fn road_building_card_returns_to_normal_phase() {
         let mut s = setup();
-        s.play_progress_card(DevCard::RoadBuilding);
+        s.play_dev_card(DevCard::RoadBuilding);
 
         s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
         s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NW))));
@@ -525,7 +543,7 @@ mod tests {
     fn must_build_roads_after_playing_road_building_card() {
         let mut s = setup();
 
-        s.play_progress_card(DevCard::RoadBuilding);
+        s.play_dev_card(DevCard::RoadBuilding);
 
         let actions = s.get_actions();
         assert!(
@@ -539,7 +557,7 @@ mod tests {
         let mut s = setup();
         let starting_resources = Bundle::splat(5);
         s.player_data[Blue].resources = starting_resources;
-        s.play_progress_card(DevCard::RoadBuilding);
+        s.play_dev_card(DevCard::RoadBuilding);
 
         s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
 
@@ -553,7 +571,7 @@ mod tests {
     fn must_move_robber_after_playing_knight() {
         let mut s = setup();
 
-        s.play_progress_card(DevCard::Knight);
+        s.play_dev_card(DevCard::Knight);
 
         let actions = s.get_actions();
         assert!(
@@ -565,11 +583,11 @@ mod tests {
     #[test]
     fn first_with_size_3_army_gets_points() {
         let mut s = setup();
-        s.play_progress_card(DevCard::Knight);
-        s.play_progress_card(DevCard::Knight);
+        s.play_dev_card(DevCard::Knight);
+        s.play_dev_card(DevCard::Knight);
         let before = s.victory_points(Blue);
 
-        s.play_progress_card(DevCard::Knight);
+        s.play_dev_card(DevCard::Knight);
 
         let after = s.victory_points(Blue);
         assert_eq!(after - before, 2);
@@ -585,11 +603,41 @@ mod tests {
         let r_before = s.victory_points(Red);
 
         // Blue plays a knight
-        s.play_progress_card(DevCard::Knight);
+        s.play_dev_card(DevCard::Knight);
 
         let b_after = s.victory_points(Blue);
         let r_after = s.victory_points(Red);
         assert_eq!(b_after - b_before, 2); // Up 2
         assert_eq!(r_before - r_after, 2); // Down 2
+    }
+
+    #[test]
+    fn must_monopolize_after_playing_monopoly() {
+        let mut s = setup();
+
+        s.play_dev_card(DevCard::Monopoly);
+
+        let actions = s.get_actions();
+        assert!(
+            actions.iter().all(|a| matches!(a, Monopolize(_))),
+            "all available actions should be Monopolize"
+        );
+    }
+
+    #[test]
+    fn monopolizing_transfers_all_resources_of_type() {
+        let mut s = setup();
+        s.player_data[Blue].resources = Bundle::from_slice(&[2, 2, 2, 2, 0]);
+        s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
+        s.player_data[Red].resources = Bundle::from_slice(&[2, 2, 0, 0, 0]);
+        s.player_data[White].resources = Bundle::from_slice(&[1, 2, 0, 0, 0]);
+        s.play_dev_card(DevCard::Monopoly);
+
+        s.apply_acton(Monopolize(Brick));
+
+        assert_eq!(s.player_data[Blue].resources[Brick], 5);
+        assert_eq!(s.player_data[Orange].resources[Brick], 0);
+        assert_eq!(s.player_data[Red].resources[Brick], 0);
+        assert_eq!(s.player_data[White].resources[Brick], 0);
     }
 }
