@@ -36,7 +36,7 @@ enum Phase {
 }
 
 pub struct State {
-    stockpile: Stockpile,
+    bank: Stockpile,
     board: Board,
     whose_turn: Player,
     turn_order: [Player; 4],
@@ -59,7 +59,7 @@ impl State {
         let stockpile = Stockpile::bank();
 
         State {
-            stockpile,
+            bank: stockpile,
             board: Board::new(resources, rolls),
             whose_turn: PLAYERS[0],
             turn_order: PLAYERS,
@@ -99,13 +99,13 @@ impl State {
 
     /// Transfers resources from bank to player
     fn give(&mut self, player: Player, bundle: Bundle) {
-        self.stockpile.resources -= bundle;
+        self.bank.resources -= bundle;
         self.player_data[player].resources += bundle;
     }
 
     /// Transfers resources from player to bank
     fn take(&mut self, player: Player, bundle: Bundle) {
-        self.stockpile.resources += bundle;
+        self.bank.resources += bundle;
         self.player_data[player].resources -= bundle;
     }
 
@@ -124,8 +124,8 @@ impl State {
 
                 // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
                 for (item, cost) in BUY_COSTS.iter() {
-                    if self.stockpile.has_purchasable(player, item)
-                        && cost.data.simd_le(self.stockpile.resources.data).all()
+                    if self.bank.has_purchasable(player, item)
+                        && cost.data.simd_le(self.bank.resources.data).all()
                         && cost.data.simd_le(player_data.resources.data).all()
                     {
                         match item {
@@ -164,7 +164,16 @@ impl State {
                     .map(|edge_id| BuildRoad(edge_id))
                     .collect()
             }
-            Phase::YearOfPlenty(_) => todo!(),
+            Phase::YearOfPlenty(_) => RESOURCES
+                .into_iter()
+                .filter_map(|res| {
+                    if self.bank.resources[res] > 0 {
+                        Some(TakeFreeResource(res))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
             Phase::Monopoly => RESOURCES.into_iter().map(|r| Monopolize(r)).collect(),
             Phase::Trading() => todo!(),
         }
@@ -205,7 +214,7 @@ impl State {
             }
             for res2 in RESOURCES {
                 // Prevent nonsensical trades and ensure bank has enough of res2 in stock
-                if res1 == res2 || self.stockpile.resources[res2] == 0 {
+                if res1 == res2 || self.bank.resources[res2] == 0 {
                     continue;
                 }
                 actions.push(ExchangeResources(((res1, ratios[res1]), res2)));
@@ -285,6 +294,16 @@ impl State {
                 self.player_data[player].resources[res] += total;
                 self.phase = Phase::Normal;
             }
+            TakeFreeResource(res) => {
+                let mut bundle = Bundle::splat(0);
+                bundle[res] += 1;
+                self.give(player, bundle);
+                self.phase = match self.phase {
+                    Phase::YearOfPlenty(1) => Phase::Normal,
+                    Phase::YearOfPlenty(remaining) => Phase::YearOfPlenty(remaining - 1),
+                    _ => panic!("tried to take resource in invalid phase"),
+                };
+            }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
                 // TODO: reset state variables
@@ -301,7 +320,7 @@ impl State {
             RoadBuilding => {
                 let to_build = min(
                     2,
-                    self.stockpile
+                    self.bank
                         .purchasable_count(self.whose_turn, Purchasable::Road),
                 );
                 self.phase = Phase::RoadBuilding(to_build);
@@ -322,8 +341,8 @@ impl State {
             }
             YearOfPlenty => {
                 // Take min(2, bank total) resource units from the bank.
-                // let to_take = min(2, self.stockpile.resources.reduce_sum());
-                todo!();
+                let to_take = min(2, self.bank.resources.reduce_sum());
+                self.phase = Phase::YearOfPlenty(to_take);
             }
             _ => panic!("tried to play unplayable dev card"),
         }
@@ -374,7 +393,7 @@ impl State {
             };
         } else {
             // Calculate resource production (for each resource, for each player)
-            let production = self.board.produce_resources(roll, self.stockpile.resources);
+            let production = self.board.produce_resources(roll, self.bank.resources);
             for player in PLAYERS {
                 self.give(player, production[player]);
             }
@@ -639,5 +658,32 @@ mod tests {
         assert_eq!(s.player_data[Orange].resources[Brick], 0);
         assert_eq!(s.player_data[Red].resources[Brick], 0);
         assert_eq!(s.player_data[White].resources[Brick], 0);
+    }
+
+    #[test]
+    fn must_take_resources_after_playing_year_of_plenty() {
+        let mut s = setup();
+
+        s.play_dev_card(DevCard::YearOfPlenty);
+
+        let actions = s.get_actions();
+        assert!(
+            actions.iter().all(|a| matches!(a, TakeFreeResource(_))),
+            "all available actions should be TakeResource"
+        );
+    }
+
+    #[test]
+    fn take_resource_transfers_from_bank_to_player() {
+        let mut s = setup();
+        s.player_data[Blue].resources = Bundle::splat(0);
+        let bank_before = s.bank.resources[Brick];
+        s.play_dev_card(DevCard::YearOfPlenty);
+
+        s.apply_acton(TakeFreeResource(Brick));
+        s.apply_acton(TakeFreeResource(Brick));
+
+        assert_eq!(s.player_data[Blue].resources[Brick], 2);
+        assert_eq!(s.bank.resources[Brick], bank_before - 2);
     }
 }

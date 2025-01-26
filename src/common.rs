@@ -43,6 +43,7 @@ pub enum Action {
     DiscardResource(Resource),
     StealResource(Player),
     Monopolize(Resource),
+    TakeFreeResource(Resource),
     ExchangeResources(((Resource, u8), Resource)),
     ProposeTrade(((Resource, u8), (Resource, u8))),
     AcceptTrade(Player),
