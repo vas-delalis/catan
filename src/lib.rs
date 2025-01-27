@@ -36,17 +36,21 @@ enum Phase {
 }
 
 pub struct State {
+    phase: Phase,
     bank: Bank,
     board: Board,
     whose_turn: Player,
     turn_order: [Player; 4],
     player_data: EnumMap<Player, PlayerData>,
+
     armies: Bundle,
-    victory_point_cards: Bundle,
     army_leader: Option<Player>,
-    has_rolled: bool,
+
+    dev_cards: EnumMap<Player, Bundle>,
+    locked_dev_cards: EnumMap<DevCard, bool>,
     has_played_dev_card: bool,
-    phase: Phase,
+
+    has_rolled: bool,
     // TODO: keep track of freshly bought dev cards
 }
 
@@ -67,7 +71,8 @@ impl State {
                 resources: Bundle::splat(0),
             }),
             armies: Bundle::splat(0),
-            victory_point_cards: Bundle::splat(0),
+            dev_cards: EnumMap::from_fn(|_| Bundle::splat(0)),
+            locked_dev_cards: EnumMap::from_fn(|_| false),
             army_leader: None,
             has_rolled: false,
             has_played_dev_card: false,
@@ -94,7 +99,7 @@ impl State {
     fn victory_points(&self, player: Player) -> u32 {
         let from_board = self.board.victory_points(player);
         let largest_army = 2 * (self.army_leader == Some(player)) as u32;
-        from_board + self.victory_point_cards[player] as u32 + largest_army
+        from_board + self.dev_cards[player][DevCard::VictoryPoint] as u32 + largest_army
     }
 
     /// Transfers resources from bank to player
@@ -316,10 +321,21 @@ impl State {
                 bundle[res2] = 1;
                 self.take_from_bank(player, bundle);
             }
+            BuyDevCard => {
+                self.give_to_bank(player, BUY_COSTS[Purchasable::DevCard]);
+                let card = self.bank.take_dev_card();
+                // You can only play one dev card per turn.
+                // This means that we don't need to track how many cards of each type are locked.
+                if self.dev_cards[player][card] == 0 {
+                    self.locked_dev_cards[card] = true;
+                }
+                self.dev_cards[player][card] += 1;
+            }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
                 // TODO: reset state variables
                 self.has_rolled = false;
+                self.locked_dev_cards = EnumMap::from_fn(|_| false);
                 self.has_played_dev_card = false;
             }
             _ => {}
