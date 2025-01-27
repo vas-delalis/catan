@@ -151,7 +151,23 @@ impl State {
                     }
                 }
 
-                // TODO: PlayDevCard
+                // PlayDevCard
+                if !self.has_played_dev_card {
+                    use DevCard::*;
+
+                    actions.extend(
+                        [Knight, Monopoly, RoadBuilding, YearOfPlenty]
+                            .into_iter()
+                            .filter_map(|card| {
+                                if self.dev_cards[player][card] > 0 && !self.locked_dev_cards[card]
+                                {
+                                    Some(PlayDevCard(card))
+                                } else {
+                                    None
+                                }
+                            }),
+                    );
+                }
 
                 // ExchangeResource (maritime trade)
                 actions.append(&mut self.get_exchange_actions(player));
@@ -287,7 +303,9 @@ impl State {
                 };
             }
             PlayDevCard(card) => {
-                self.play_dev_card(card);
+                self.activate_dev_card(card);
+                self.has_played_dev_card = true;
+                self.dev_cards[self.whose_turn][card] -= 1;
             }
             Monopolize(res) => {
                 // Take all of res from other players
@@ -323,7 +341,7 @@ impl State {
             }
             BuyDevCard => {
                 self.give_to_bank(player, BUY_COSTS[Purchasable::DevCard]);
-                let card = self.bank.take_dev_card();
+                let card = self.bank.draw_random_dev_card();
                 // You can only play one dev card per turn.
                 // This means that we don't need to track how many cards of each type are locked.
                 if self.dev_cards[player][card] == 0 {
@@ -342,7 +360,7 @@ impl State {
         }
     }
 
-    fn play_dev_card(&mut self, card: DevCard) {
+    fn activate_dev_card(&mut self, card: DevCard) {
         use DevCard::*;
         match card {
             RoadBuilding => {
@@ -374,8 +392,6 @@ impl State {
             }
             _ => panic!("tried to play unplayable dev card"),
         }
-        self.has_played_dev_card = true;
-        // TODO: remove card
     }
 
     /// Player steals random resource card from target
@@ -618,7 +634,7 @@ mod tests {
     #[test]
     fn road_building_card_returns_to_normal_phase() {
         let mut s = setup();
-        s.play_dev_card(DevCard::RoadBuilding);
+        s.activate_dev_card(DevCard::RoadBuilding);
 
         s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
         s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NW))));
@@ -633,7 +649,7 @@ mod tests {
     fn must_build_roads_after_playing_road_building_card() {
         let mut s = setup();
 
-        s.play_dev_card(DevCard::RoadBuilding);
+        s.activate_dev_card(DevCard::RoadBuilding);
 
         let actions = s.get_actions();
         assert!(
@@ -647,7 +663,7 @@ mod tests {
         let mut s = setup();
         let starting_resources = Bundle::splat(5);
         s.player_data[Blue].resources = starting_resources;
-        s.play_dev_card(DevCard::RoadBuilding);
+        s.activate_dev_card(DevCard::RoadBuilding);
 
         s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
 
@@ -661,7 +677,7 @@ mod tests {
     fn must_move_robber_after_playing_knight() {
         let mut s = setup();
 
-        s.play_dev_card(DevCard::Knight);
+        s.activate_dev_card(DevCard::Knight);
 
         let actions = s.get_actions();
         assert!(
@@ -673,11 +689,11 @@ mod tests {
     #[test]
     fn first_with_size_3_army_gets_points() {
         let mut s = setup();
-        s.play_dev_card(DevCard::Knight);
-        s.play_dev_card(DevCard::Knight);
+        s.activate_dev_card(DevCard::Knight);
+        s.activate_dev_card(DevCard::Knight);
         let before = s.victory_points(Blue);
 
-        s.play_dev_card(DevCard::Knight);
+        s.activate_dev_card(DevCard::Knight);
 
         let after = s.victory_points(Blue);
         assert_eq!(after - before, 2);
@@ -693,7 +709,7 @@ mod tests {
         let r_before = s.victory_points(Red);
 
         // Blue plays a knight
-        s.play_dev_card(DevCard::Knight);
+        s.activate_dev_card(DevCard::Knight);
 
         let b_after = s.victory_points(Blue);
         let r_after = s.victory_points(Red);
@@ -705,7 +721,7 @@ mod tests {
     fn must_monopolize_after_playing_monopoly() {
         let mut s = setup();
 
-        s.play_dev_card(DevCard::Monopoly);
+        s.activate_dev_card(DevCard::Monopoly);
 
         let actions = s.get_actions();
         assert!(
@@ -721,7 +737,7 @@ mod tests {
         s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
         s.player_data[Red].resources = Bundle::from_slice(&[2, 2, 0, 0, 0]);
         s.player_data[White].resources = Bundle::from_slice(&[1, 2, 0, 0, 0]);
-        s.play_dev_card(DevCard::Monopoly);
+        s.activate_dev_card(DevCard::Monopoly);
 
         s.apply_acton(Monopolize(Brick));
 
@@ -735,7 +751,7 @@ mod tests {
     fn must_take_resources_after_playing_year_of_plenty() {
         let mut s = setup();
 
-        s.play_dev_card(DevCard::YearOfPlenty);
+        s.activate_dev_card(DevCard::YearOfPlenty);
 
         let actions = s.get_actions();
         assert!(
@@ -749,12 +765,42 @@ mod tests {
         let mut s = setup();
         s.player_data[Blue].resources = Bundle::splat(0);
         let bank_before = s.bank.resources[Brick];
-        s.play_dev_card(DevCard::YearOfPlenty);
+        s.activate_dev_card(DevCard::YearOfPlenty);
 
         s.apply_acton(TakeFreeResource(Brick));
         s.apply_acton(TakeFreeResource(Brick));
 
         assert_eq!(s.player_data[Blue].resources[Brick], 2);
         assert_eq!(s.bank.resources[Brick], bank_before - 2);
+    }
+
+    #[test]
+    fn newly_bought_dev_cards_are_not_playable() {
+        let mut s = setup();
+        s.player_data[Blue].resources = Bundle::splat(5);
+        s.apply_acton(BuyDevCard);
+
+        let actions = s.get_actions();
+
+        assert!(!actions.iter().any(|a| matches!(a, PlayDevCard(_))));
+    }
+
+    #[test]
+    fn max_one_dev_card_played_per_turn() {
+        let mut s = setup();
+        s.apply_acton(BuyDevCard);
+        s.apply_acton(BuyDevCard);
+        s.locked_dev_cards = EnumMap::from_fn(|_| false);
+
+        // Play first dev card
+        let play_action = s
+            .get_actions()
+            .into_iter()
+            .find(|a| matches!(a, PlayDevCard(_)))
+            .unwrap();
+        s.apply_acton(play_action);
+
+        let actions = s.get_actions();
+        assert!(!actions.iter().any(|a| matches!(a, PlayDevCard(_))));
     }
 }

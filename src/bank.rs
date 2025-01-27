@@ -45,7 +45,7 @@ impl Bank {
         }
     }
 
-    pub fn take_dev_card(&mut self) -> DevCard {
+    pub fn draw_random_dev_card(&mut self) -> DevCard {
         let mut rng = thread_rng();
         let card = DevCard::from_usize(self.dev_card_rand_index.sample(&mut rng));
         self.dev_cards[card] -= 1;
@@ -53,5 +53,17 @@ impl Bank {
             .update_weights(&[(card as usize, &self.dev_cards[card])])
             .unwrap();
         card
+    }
+
+    pub fn take_dev_card(&mut self, card: DevCard) {
+        assert!(
+            self.dev_cards[card] > 0,
+            "no more dev cards of type {:?}",
+            card
+        );
+        self.dev_cards[card] -= 1;
+        self.dev_card_rand_index
+            .update_weights(&[(card as usize, &self.dev_cards[card])])
+            .unwrap();
     }
 }
