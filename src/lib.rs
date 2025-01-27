@@ -304,6 +304,14 @@ impl State {
                     _ => panic!("tried to take resource in invalid phase"),
                 };
             }
+            ExchangeResources(((res1, cost), res2)) => {
+                let mut bundle = Bundle::splat(0);
+                bundle[res1] = cost;
+                self.take(player, bundle);
+                let mut bundle = Bundle::splat(0);
+                bundle[res2] = 1;
+                self.give(player, bundle);
+            }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
                 // TODO: reset state variables
@@ -525,23 +533,66 @@ mod tests {
     }
 
     #[test]
-    fn exchange_actions() {
-        // TODO: split
+    fn can_exchange_4_to_1() {
         let mut s = setup();
-        s.player_data[Blue].resources = Bundle::from_slice(&[4, 2, 0, 0, 0]);
 
-        // Add harbors
-        sett(&mut s, Blue, Vertex(2, -3, S)); // Grain harbor
-        sett(&mut s, Blue, Vertex(-2, 0, N)); // Lumber harbor
+        s.player_data[Blue].resources = Bundle::splat(4);
 
-        let actions = s.get_exchange_actions(Blue);
-        assert_eq!(actions.len(), 8); // 4 from Brick, 4 from Grain
-        assert!(&actions[..4] // 4 Brick for 1 of something else
+        let actions = s.get_actions();
+        assert!(actions
             .into_iter()
-            .all(|a| matches!(a, ExchangeResources(((Brick, 4), _)))));
-        assert!(&actions[4..] // 2 Grain for 1 of something else
+            .any(|a| matches!(a, ExchangeResources(((Brick, 4), _)))));
+    }
+    #[test]
+    fn can_exchange_3_to_1_with_generic_harbor() {
+        let mut s = setup();
+        s.player_data[Blue].resources = Bundle::splat(3);
+
+        // Add generic harbor
+        sett(&mut s, Blue, Vertex(0, -2, N));
+
+        let actions = s.get_actions();
+        assert!(actions
             .into_iter()
-            .all(|a| matches!(a, ExchangeResources(((Grain, 2), _)))));
+            .any(|a| matches!(a, ExchangeResources(((Brick, 3), _)))));
+    }
+
+    #[test]
+    fn can_exchange_2_to_1_with_resource_harbor() {
+        let mut s = setup();
+        s.player_data[Blue].resources = Bundle::splat(2);
+
+        // Add grain harbor
+        sett(&mut s, Blue, Vertex(2, -3, S));
+
+        let actions = s.get_actions();
+        assert!(actions
+            .into_iter()
+            .any(|a| matches!(a, ExchangeResources(((Grain, 2), _)))));
+    }
+
+    #[test]
+    fn bank_shortage_prevents_exchange() {
+        let mut s = setup();
+        s.bank.resources = Bundle::splat(0);
+
+        s.player_data[Blue].resources = Bundle::splat(4);
+
+        let actions = s.get_actions();
+        assert!(!actions
+            .into_iter()
+            .any(|a| matches!(a, ExchangeResources((_, _)))));
+    }
+
+    #[test]
+    fn exchange_resources() {
+        let mut s = setup();
+        s.player_data[Blue].resources = Bundle::splat(4);
+
+        s.apply_acton(ExchangeResources(((Brick, 4), Grain)));
+
+        assert_eq!(s.player_data[Blue].resources[Brick], 0);
+        assert_eq!(s.player_data[Blue].resources[Grain], 5);
     }
 
     #[test]
