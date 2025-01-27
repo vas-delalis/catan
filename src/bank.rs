@@ -3,14 +3,14 @@ use enum_map::{enum_map, Enum, EnumMap};
 use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
 use DevCard::*;
 
-pub struct Stockpile {
+pub struct Bank {
     pub resources: Bundle,
+    pub buildings: EnumMap<Player, Bundle>,
     dev_cards: Bundle,
     dev_card_rand_index: WeightedIndex<u8>,
-    buildings: EnumMap<Player, Bundle>,
 }
 
-impl Stockpile {
+impl Bank {
     pub fn bank() -> Self {
         let cards = (enum_map! {
             Knight => 14,
@@ -23,7 +23,7 @@ impl Stockpile {
 
         let resources = [19; 5];
 
-        Stockpile {
+        Bank {
             resources: Bundle::from_slice(&resources),
             dev_cards: Bundle::from_slice(&cards),
             dev_card_rand_index: WeightedIndex::new(cards).unwrap(),
@@ -38,22 +38,11 @@ impl Stockpile {
         }
     }
 
-    pub fn has_purchasable(&self, player: Player, item: Purchasable) -> bool {
-        match item {
-            Purchasable::DevCard => self.dev_cards.reduce_sum() > 0,
-            _ => self.buildings[player][item] > 0,
-        }
-    }
-
     pub fn purchasable_count(&self, player: Player, item: Purchasable) -> u8 {
         match item {
             Purchasable::DevCard => self.dev_cards.reduce_sum(),
             _ => self.buildings[player][item],
         }
-    }
-
-    pub fn return_settlement(&mut self, player: Player) {
-        self.buildings[player][Purchasable::Settlement] += 1
     }
 
     pub fn take_dev_card(&mut self) -> DevCard {
@@ -64,15 +53,5 @@ impl Stockpile {
             .update_weights(&[(card as usize, &self.dev_cards[card])])
             .unwrap();
         card
-    }
-
-    pub fn take(&mut self, player: Player, item: Purchasable) -> Option<DevCard> {
-        match item {
-            Purchasable::DevCard => Some(self.take_dev_card()),
-            _ => {
-                self.buildings[player][item] -= 1;
-                None
-            }
-        }
     }
 }

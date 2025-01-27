@@ -1,9 +1,9 @@
 #![feature(portable_simd)]
 
+mod bank;
 mod board;
 pub mod bundle;
 pub mod common;
-mod stockpile;
 
 pub use board::*;
 pub use common::*;
@@ -17,10 +17,10 @@ use rand::distributions::WeightedIndex;
 use Action::*;
 
 use {
+    bank::Bank,
     bundle::{Bundle, BUY_COSTS},
     enum_map::EnumMap,
     rand::prelude::*,
-    stockpile::Stockpile,
 };
 
 enum Phase {
@@ -36,7 +36,7 @@ enum Phase {
 }
 
 pub struct State {
-    bank: Stockpile,
+    bank: Bank,
     board: Board,
     whose_turn: Player,
     turn_order: [Player; 4],
@@ -56,7 +56,7 @@ struct PlayerData {
 
 impl State {
     pub fn new(resources: Vec<Option<Resource>>, rolls: Vec<Option<u8>>) -> Self {
-        let stockpile = Stockpile::bank();
+        let stockpile = Bank::bank();
 
         State {
             bank: stockpile,
@@ -98,13 +98,13 @@ impl State {
     }
 
     /// Transfers resources from bank to player
-    fn give(&mut self, player: Player, bundle: Bundle) {
+    fn take_from_bank(&mut self, player: Player, bundle: Bundle) {
         self.bank.resources -= bundle;
         self.player_data[player].resources += bundle;
     }
 
     /// Transfers resources from player to bank
-    fn take(&mut self, player: Player, bundle: Bundle) {
+    fn give_to_bank(&mut self, player: Player, bundle: Bundle) {
         self.bank.resources += bundle;
         self.player_data[player].resources -= bundle;
     }
@@ -124,7 +124,7 @@ impl State {
 
                 // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
                 for (item, cost) in BUY_COSTS.iter() {
-                    if self.bank.has_purchasable(player, item)
+                    if self.bank.purchasable_count(player, item) > 0
                         && cost.data.simd_le(self.bank.resources.data).all()
                         && cost.data.simd_le(player_data.resources.data).all()
                     {
@@ -234,18 +234,22 @@ impl State {
                 self.handle_dice_roll(self.roll_dice());
             }
             BuildSettlement(vertex_id) => {
-                self.take(player, BUY_COSTS[Purchasable::Settlement]);
+                self.give_to_bank(player, BUY_COSTS[Purchasable::Settlement]);
+                self.bank.buildings[player][Purchasable::Settlement] -= 1;
                 self.board.add_settlement(player, vertex_id);
             }
             UpgradeSettlement(vertex_id) => {
-                self.take(player, BUY_COSTS[Purchasable::City]);
+                self.give_to_bank(player, BUY_COSTS[Purchasable::City]);
+                self.bank.buildings[player][Purchasable::Settlement] += 1;
+                self.bank.buildings[player][Purchasable::City] -= 1;
                 self.board.upgrade_settlement(vertex_id);
             }
             BuildRoad(edge_id) => {
                 self.board.add_road(player, edge_id);
+                self.bank.buildings[player][Purchasable::Road] -= 1;
                 self.phase = match self.phase {
                     Phase::RoadBuilding(1) => {
-                        self.take(player, BUY_COSTS[Purchasable::Road]);
+                        self.give_to_bank(player, BUY_COSTS[Purchasable::Road]);
                         Phase::Normal
                     }
                     Phase::RoadBuilding(remaining) => Phase::RoadBuilding(remaining - 1),
@@ -264,7 +268,7 @@ impl State {
             DiscardResource(res) => {
                 let mut bundle = Bundle::splat(0);
                 bundle[res] += 1;
-                self.take(player, bundle);
+                self.give_to_bank(player, bundle);
                 self.phase = match self.phase {
                     Phase::Discarding(mut remaining) => {
                         remaining[player] -= 1;
@@ -297,7 +301,7 @@ impl State {
             TakeFreeResource(res) => {
                 let mut bundle = Bundle::splat(0);
                 bundle[res] += 1;
-                self.give(player, bundle);
+                self.take_from_bank(player, bundle);
                 self.phase = match self.phase {
                     Phase::YearOfPlenty(1) => Phase::Normal,
                     Phase::YearOfPlenty(remaining) => Phase::YearOfPlenty(remaining - 1),
@@ -307,10 +311,10 @@ impl State {
             ExchangeResources(((res1, cost), res2)) => {
                 let mut bundle = Bundle::splat(0);
                 bundle[res1] = cost;
-                self.take(player, bundle);
+                self.give_to_bank(player, bundle);
                 let mut bundle = Bundle::splat(0);
                 bundle[res2] = 1;
-                self.give(player, bundle);
+                self.take_from_bank(player, bundle);
             }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
@@ -403,7 +407,7 @@ impl State {
             // Calculate resource production (for each resource, for each player)
             let production = self.board.produce_resources(roll, self.bank.resources);
             for player in PLAYERS {
-                self.give(player, production[player]);
+                self.take_from_bank(player, production[player]);
             }
         }
     }
