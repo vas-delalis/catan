@@ -5,8 +5,8 @@ use std::{
     cmp::{max, min},
     collections::{HashMap, HashSet},
     fmt::Debug,
-    rc::Rc,
     simd::{cmp::SimdOrd, u8x8},
+    sync::Arc,
 };
 
 use crate::{bundle::Bundle, common::*};
@@ -187,7 +187,7 @@ struct SharedBoardData {
 
 /// Implements behavior that relates to the Catan hex board.
 pub struct Board {
-    shared_data: Rc<SharedBoardData>,
+    shared_data: Arc<SharedBoardData>,
     player_buildings: EnumMap<Player, Bitboard<V>>, // Idea: store city flags in 10 free bits
     player_roads: EnumMap<Player, Bitboard<E>>,
     player_settlement_slots: EnumMap<Player, Bitboard<V>>,
@@ -202,7 +202,7 @@ pub struct Board {
 impl Clone for Board {
     fn clone(&self) -> Self {
         Board {
-            shared_data: Rc::clone(&self.shared_data),
+            shared_data: Arc::clone(&self.shared_data),
             player_buildings: self.player_buildings.clone(),
             player_roads: self.player_roads.clone(),
             player_settlement_slots: self.player_settlement_slots.clone(),
@@ -318,7 +318,7 @@ impl Board {
             cities: Bitboard::zeros(),
             robber_verts: shared_data.hex_to_verts[center_hex_id],
             robber: center_hex_id,
-            shared_data: Rc::new(shared_data),
+            shared_data: Arc::new(shared_data),
         }
     }
 
@@ -326,6 +326,10 @@ impl Board {
 
     pub fn hex_id(&self, hex: Hex) -> HexId {
         self.shared_data.simple_board.hex_ids[&hex]
+    }
+
+    pub fn hex(&self, id: HexId) -> Hex {
+        self.shared_data.simple_board.hexes[id]
     }
 
     pub fn vertex_id(&self, vertex: Vertex) -> VertexId {
@@ -388,6 +392,8 @@ impl Board {
         self.player_settlement_slots[player] |= self.shared_data.edge_to_verts[edge_id];
         // Allow adjacent roads
         self.player_road_slots[player] |= self.shared_data.edge_to_edges[edge_id];
+
+        // TODO: longest road
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
@@ -399,7 +405,8 @@ impl Board {
     }
 
     pub fn move_robber(&mut self, hex_id: HexId) {
-        self.robber_verts = self.shared_data.hex_to_verts[hex_id]
+        self.robber = hex_id;
+        self.robber_verts = self.shared_data.hex_to_verts[hex_id];
     }
 
     /// Returns the amount of each resource needed to trade with the bank (maritime trade).
@@ -456,9 +463,11 @@ impl Board {
     // City flags in leftover bits would save 1 lanewise popcnt and 1 bitwise and
     // https://stackoverflow.com/questions/51104493/is-it-possible-to-popcount-m256i-and-store-result-in-8-32-bit-words-instead-of
 
+    /// Returns the victory points a player gets from buildings and the longest road marker.
     pub fn victory_points(&self, player: Player) -> u32 {
         let buildings = self.player_buildings[player];
         buildings.count_ones() + (buildings & self.cities).count_ones()
+        // TODO: longest road
     }
 }
 
@@ -788,5 +797,15 @@ mod tests {
         // Assert all placeable roads are on edges with ids in 0..72
         let placeable = b.available_roads(Red);
         assert!(placeable < Bitboard::new(1 << N_EDGES));
+    }
+
+    #[test]
+    fn players_on_hex() {
+        let b = setup();
+        let hex_id = b.hex_id(Hex(-2, 1));
+
+        let players = b.players_on_hex(hex_id);
+
+        assert_eq!(players, vec![Blue, Red]);
     }
 }
