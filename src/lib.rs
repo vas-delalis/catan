@@ -23,7 +23,8 @@ use {
     rand::prelude::*,
 };
 
-enum Phase {
+#[derive(Debug, Clone, Copy)]
+pub enum Phase {
     Normal,
     Setup, // Each player's second settlement produces resources at the end of setup
     Discarding(Bundle), // Remaining cards to discard per player
@@ -36,9 +37,9 @@ enum Phase {
 }
 
 pub struct State {
-    phase: Phase,
-    bank: Bank,
-    board: Board,
+    pub phase: Phase,
+    pub bank: Bank,
+    pub board: Board,
     whose_turn: Player,
     turn_order: [Player; 4],
     player_data: EnumMap<Player, PlayerData>,
@@ -51,11 +52,35 @@ pub struct State {
     has_played_dev_card: bool,
 
     has_rolled: bool,
-    // TODO: keep track of freshly bought dev cards
 }
 
 struct PlayerData {
     resources: Bundle,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        let mut resources: Vec<Option<Resource>> = [
+            Ore, Wool, Lumber, Grain, Brick, Wool, Brick, Grain, Lumber, Ore, // <- Desert
+            Lumber, Ore, Lumber, Ore, Grain, Wool, Brick, Grain, Wool,
+        ]
+        .into_iter()
+        .map(Some)
+        .collect();
+
+        let mut rolls: Vec<Option<u8>> = [
+            10, 2, 9, 12, 6, 4, 10, 9, 11, 7, // <- Desert
+            3, 8, 8, 3, 4, 5, 5, 6, 11,
+        ]
+        .into_iter()
+        .map(Some)
+        .collect();
+
+        resources[9] = None;
+        rolls[9] = None;
+
+        State::new(resources, rolls)
+    }
 }
 
 impl State {
@@ -93,6 +118,10 @@ impl State {
         }
     }
 
+    pub fn is_terminal(&self) -> bool {
+        self.victory_points(self.whose_turn) >= 10
+    }
+
     /// Returns the a player's victory points.
     ///
     /// 1 per settlement; 2 per city; 1 per VP card; 2 for largest army; 2 for longest road.
@@ -116,16 +145,14 @@ impl State {
 
     // === Action generation ===
 
-    pub fn get_actions(&mut self) -> Vec<Action> {
+    pub fn get_actions(&self) -> Vec<Action> {
         let player = self.current_player();
         let player_data = &self.player_data[player];
 
         match self.phase {
             Phase::Normal => {
                 let mut actions = vec![];
-                if !self.has_rolled {
-                    actions.push(RollDice);
-                }
+                actions.push(if !self.has_rolled { RollDice } else { EndTurn });
 
                 // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
                 for (item, cost) in BUY_COSTS.iter() {
@@ -246,7 +273,7 @@ impl State {
 
     // === Action execution/application ===
 
-    pub fn apply_acton(&mut self, action: Action) {
+    pub fn apply_action(&mut self, action: Action) {
         use Action::*;
 
         let player = self.current_player();
@@ -280,7 +307,11 @@ impl State {
             }
             MoveRobber(hex_id) => {
                 self.board.move_robber(hex_id);
-                self.phase = Phase::StealingResources(hex_id);
+                self.phase = if self.board.players_on_hex(hex_id).len() > 0 {
+                    Phase::StealingResources(hex_id)
+                } else {
+                    Phase::Normal
+                }
             }
             StealResource(target) => {
                 self.steal_resource(self.current_player(), target);
@@ -458,26 +489,7 @@ mod tests {
     }
 
     fn setup() -> State {
-        let mut resources: Vec<Option<Resource>> = [
-            Ore, Wool, Lumber, Grain, Brick, Wool, Brick, Grain, Lumber, Ore, // <- Desert
-            Lumber, Ore, Lumber, Ore, Grain, Wool, Brick, Grain, Wool,
-        ]
-        .into_iter()
-        .map(Some)
-        .collect();
-
-        let mut rolls: Vec<Option<u8>> = [
-            10, 2, 9, 12, 6, 4, 10, 9, 11, 7, // <- Desert
-            3, 8, 8, 3, 4, 5, 5, 6, 11,
-        ]
-        .into_iter()
-        .map(Some)
-        .collect();
-
-        resources[9] = None;
-        rolls[9] = None;
-
-        let mut state = State::new(resources, rolls);
+        let mut state = State::default();
         let mut s = |p: Player, v: Vertex| sett(&mut state, p, v);
 
         s(Blue, Vertex(-2, 2, N));
@@ -505,7 +517,7 @@ mod tests {
     fn apply_actions(s: &mut State, actions: Vec<Action>) {
         for action in actions {
             s.get_actions();
-            s.apply_acton(action);
+            s.apply_action(action);
         }
     }
 
@@ -537,7 +549,7 @@ mod tests {
         s.handle_dice_roll(7);
 
         // Move robber to hex with red & white settlements
-        s.apply_acton(MoveRobber(4));
+        s.apply_action(MoveRobber(4));
 
         let actions = s.get_actions();
         assert_eq!(actions.len(), 2);
@@ -553,10 +565,10 @@ mod tests {
         s.player_data[Blue].resources = starting_blue;
         s.player_data[Red].resources = starting_red;
         s.handle_dice_roll(7);
-        s.apply_acton(MoveRobber(4));
+        s.apply_action(MoveRobber(4));
 
         // Blue steals from red
-        s.apply_acton(StealResource(Red));
+        s.apply_action(StealResource(Red));
 
         // Blue gains 1, red loses 1. Stolen resource is Brick or Grain, since that's all red had.
         assert_eq!(
@@ -625,7 +637,7 @@ mod tests {
         let mut s = setup();
         s.player_data[Blue].resources = Bundle::splat(4);
 
-        s.apply_acton(ExchangeResources(((Brick, 4), Grain)));
+        s.apply_action(ExchangeResources(((Brick, 4), Grain)));
 
         assert_eq!(s.player_data[Blue].resources[Brick], 0);
         assert_eq!(s.player_data[Blue].resources[Grain], 5);
@@ -636,8 +648,8 @@ mod tests {
         let mut s = setup();
         s.activate_dev_card(DevCard::RoadBuilding);
 
-        s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
-        s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NW))));
+        s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
+        s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NW))));
 
         // An attempt at an implementation-independent way to check if we're back in normal phase
         let actions = s.get_actions();
@@ -665,7 +677,7 @@ mod tests {
         s.player_data[Blue].resources = starting_resources;
         s.activate_dev_card(DevCard::RoadBuilding);
 
-        s.apply_acton(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
+        s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
 
         assert_eq!(
             s.player_data[Blue].resources, starting_resources,
@@ -739,7 +751,7 @@ mod tests {
         s.player_data[White].resources = Bundle::from_slice(&[1, 2, 0, 0, 0]);
         s.activate_dev_card(DevCard::Monopoly);
 
-        s.apply_acton(Monopolize(Brick));
+        s.apply_action(Monopolize(Brick));
 
         assert_eq!(s.player_data[Blue].resources[Brick], 5);
         assert_eq!(s.player_data[Orange].resources[Brick], 0);
@@ -767,8 +779,8 @@ mod tests {
         let bank_before = s.bank.resources[Brick];
         s.activate_dev_card(DevCard::YearOfPlenty);
 
-        s.apply_acton(TakeFreeResource(Brick));
-        s.apply_acton(TakeFreeResource(Brick));
+        s.apply_action(TakeFreeResource(Brick));
+        s.apply_action(TakeFreeResource(Brick));
 
         assert_eq!(s.player_data[Blue].resources[Brick], 2);
         assert_eq!(s.bank.resources[Brick], bank_before - 2);
@@ -778,7 +790,7 @@ mod tests {
     fn newly_bought_dev_cards_are_not_playable() {
         let mut s = setup();
         s.player_data[Blue].resources = Bundle::splat(5);
-        s.apply_acton(BuyDevCard);
+        s.apply_action(BuyDevCard);
 
         let actions = s.get_actions();
 
@@ -788,8 +800,8 @@ mod tests {
     #[test]
     fn max_one_dev_card_played_per_turn() {
         let mut s = setup();
-        s.apply_acton(BuyDevCard);
-        s.apply_acton(BuyDevCard);
+        s.apply_action(BuyDevCard);
+        s.apply_action(BuyDevCard);
         s.locked_dev_cards = EnumMap::from_fn(|_| false);
 
         // Play first dev card
@@ -798,7 +810,7 @@ mod tests {
             .into_iter()
             .find(|a| matches!(a, PlayDevCard(_)))
             .unwrap();
-        s.apply_acton(play_action);
+        s.apply_action(play_action);
 
         let actions = s.get_actions();
         assert!(!actions.iter().any(|a| matches!(a, PlayDevCard(_))));

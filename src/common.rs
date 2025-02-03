@@ -9,10 +9,13 @@ pub const N_VERTICES: usize = 54;
 pub const N_EDGES: usize = 72;
 pub const N_ROLLS: usize = 11;
 
+use serde::{Deserialize, Serialize};
 pub use Player::*;
 pub use Resource::*;
 
-#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq)]
+use crate::bundle::Bundle;
+
+#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Resource {
     Brick,
     Grain,
@@ -21,7 +24,7 @@ pub enum Resource {
     Wool,
 }
 
-pub static RESOURCES: [Resource; 5] = [Brick, Grain, Lumber, Ore, Wool];
+pub const RESOURCES: [Resource; 5] = [Brick, Grain, Lumber, Ore, Wool];
 
 #[derive(Debug, Enum, Clone, Copy)]
 pub enum Purchasable {
@@ -31,7 +34,7 @@ pub enum Purchasable {
     DevCard,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
     RollDice,
     BuildSettlement(VertexId),
@@ -51,7 +54,7 @@ pub enum Action {
     EndTurn,
 }
 
-#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Player {
     Blue,
     Orange,
@@ -61,11 +64,19 @@ pub enum Player {
 
 pub const PLAYERS: [Player; 4] = [Player::Blue, Player::Orange, Player::Red, Player::White];
 
-#[derive(Debug, Enum, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Enum, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DevCard {
     Knight,
     VictoryPoint,
     RoadBuilding,
     YearOfPlenty,
     Monopoly,
+}
+
+#[derive(Serialize)]
+pub enum ActionResult {
+    DiceRolled(u8, Bundle),
+    DevCardBought(DevCard),
+    Monopolized(Resource, u8),
+    ResourceStolen(Resource),
 }

@@ -12,6 +12,7 @@ use std::{
 };
 
 use enum_map::{enum_map, Enum, EnumMap};
+use serde::Serialize;
 
 use crate::common::*;
 
@@ -158,6 +159,15 @@ impl PartialOrd for Bundle {
         } else {
             None
         }
+    }
+}
+
+impl Serialize for Bundle {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.data.as_array().serialize(serializer)
     }
 }
 
