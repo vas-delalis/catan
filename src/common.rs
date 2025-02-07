@@ -1,4 +1,4 @@
-use enum_map::Enum;
+use enum_map::{Enum, EnumMap};
 
 pub type HexId = usize;
 pub type VertexId = usize;
@@ -73,10 +73,41 @@ pub enum DevCard {
     Monopoly,
 }
 
+pub const DEV_CARDS: [DevCard; 5] = [
+    DevCard::Knight,
+    DevCard::VictoryPoint,
+    DevCard::RoadBuilding,
+    DevCard::YearOfPlenty,
+    DevCard::VictoryPoint,
+];
+
 #[derive(Serialize)]
 pub enum ActionResult {
     DiceRolled(u8, Bundle),
     DevCardBought(DevCard),
     Monopolized(Resource, u8),
     ResourceStolen(Resource),
+}
+
+#[derive(Serialize)]
+pub struct Observation {
+    pub observer: Player,
+    pub current_player: Player,
+    pub is_terminal: bool,
+    pub actions: Vec<Action>,
+    pub observer_hand: ObserverHand,
+    pub hidden_hands: Vec<HiddenHand>,
+}
+
+#[derive(Serialize)]
+pub struct ObserverHand {
+    pub resources: EnumMap<Resource, u8>,
+    pub dev_cards: EnumMap<DevCard, u8>,
+}
+
+#[derive(Serialize)]
+pub struct HiddenHand {
+    pub player: Player,
+    pub resources: u8,
+    pub dev_cards: u8,
 }

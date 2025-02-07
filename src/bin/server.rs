@@ -8,6 +8,7 @@ use axum::{
 };
 use catan::*;
 use serde::{Deserialize, Serialize};
+use tower_http::cors::{Any, CorsLayer};
 
 static GAME: LazyLock<State> = LazyLock::new(State::default);
 
@@ -16,41 +17,15 @@ async fn main() {
     let app = Router::new()
         .route("/", get(get_initial_observation))
         .route("/observation/{observer}", get(get_observation))
-        .route("/action", post(apply_action));
+        .route("/action", post(apply_action))
+        .layer(CorsLayer::new().allow_origin(Any));
 
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:4000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
 async fn get_observation(Path(observer): Path<Player>) -> Json<Observation> {
-    Json(Observation {
-        observer,
-        current_player: GAME.current_player(),
-        is_terminal: GAME.is_terminal(),
-        actions: GAME.get_actions(),
-        observer_hand: ObserverHand {
-            resources: vec![],
-            dev_cards: vec![],
-        },
-        hidden_hands: vec![
-            HiddenHand {
-                player: Orange,
-                resources: 5,
-                dev_cards: 2,
-            },
-            HiddenHand {
-                player: Red,
-                resources: 4,
-                dev_cards: 1,
-            },
-            HiddenHand {
-                player: White,
-                resources: 3,
-                dev_cards: 0,
-            },
-        ],
-    })
+    Json(GAME.observe(observer))
 }
 
 async fn get_initial_observation() -> Json<InitialObservation> {
@@ -83,27 +58,4 @@ struct InitialObservation {
     settlements: Vec<(Player, VertexId)>,
     roads: Vec<(Player, EdgeId)>,
     // TODO: harbors
-}
-
-#[derive(Serialize)]
-struct Observation {
-    observer: Player,
-    current_player: Player,
-    is_terminal: bool,
-    actions: Vec<Action>,
-    observer_hand: ObserverHand,
-    hidden_hands: Vec<HiddenHand>,
-}
-
-#[derive(Serialize)]
-struct ObserverHand {
-    resources: Vec<Resource>,
-    dev_cards: Vec<DevCard>,
-}
-
-#[derive(Serialize)]
-struct HiddenHand {
-    player: Player,
-    resources: u8,
-    dev_cards: u8,
 }

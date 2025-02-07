@@ -105,8 +105,6 @@ impl State {
         }
     }
 
-    // === Helpers ===
-
     /// Returns the player who picks the next action.
     pub fn current_player(&self) -> Player {
         match self.phase {
@@ -121,6 +119,31 @@ impl State {
     pub fn is_terminal(&self) -> bool {
         self.victory_points(self.whose_turn) >= 10
     }
+
+    /// Get the current state from the perspective of a given player.
+    pub fn observe(&self, observer: Player) -> Observation {
+        Observation {
+            observer,
+            current_player: self.current_player(),
+            is_terminal: self.is_terminal(),
+            actions: self.get_actions(),
+            observer_hand: ObserverHand {
+                resources: EnumMap::from_fn(|r| self.player_data[observer].resources[r]),
+                dev_cards: EnumMap::from_fn(|c| self.dev_cards[observer][c]),
+            },
+            hidden_hands: PLAYERS
+                .into_iter()
+                .filter(|&p| p != observer)
+                .map(|p| HiddenHand {
+                    player: p,
+                    resources: self.player_data[p].resources.reduce_sum(),
+                    dev_cards: self.dev_cards[p].reduce_sum(),
+                })
+                .collect(),
+        }
+    }
+
+    // === Helpers ===
 
     /// Returns the a player's victory points.
     ///
