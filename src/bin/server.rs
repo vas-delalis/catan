@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 use axum::{
     extract::Path,
@@ -10,7 +10,7 @@ use catan::*;
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 
-static GAME: LazyLock<State> = LazyLock::new(State::default);
+static GAME: LazyLock<Mutex<State>> = LazyLock::new(|| Mutex::new(State::default()));
 
 #[tokio::main]
 async fn main() {
@@ -18,14 +18,14 @@ async fn main() {
         .route("/", get(get_initial_observation))
         .route("/observation/{observer}", get(get_observation))
         .route("/action", post(apply_action))
-        .layer(CorsLayer::new().allow_origin(Any));
+        .layer(CorsLayer::new().allow_origin(Any).allow_headers(Any));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:4000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
 async fn get_observation(Path(observer): Path<Player>) -> Json<Observation> {
-    Json(GAME.observe(observer))
+    Json(GAME.lock().unwrap().observe(observer))
 }
 
 async fn get_initial_observation() -> Json<InitialObservation> {
@@ -45,8 +45,18 @@ async fn get_initial_observation() -> Json<InitialObservation> {
     })
 }
 
-async fn apply_action(action: String) -> (StatusCode, Json<ActionResult>) {
-    (StatusCode::OK, Json(ActionResult::Monopolized(Grain, 5)))
+#[derive(Deserialize)]
+struct ApplyActionPayload {
+    action_id: usize,
+}
+
+async fn apply_action(
+    Json(payload): Json<ApplyActionPayload>,
+) -> (StatusCode, Json<Option<ActionResult>>) {
+    let mut game = GAME.lock().unwrap();
+    let action = game.get_actions()[payload.action_id]; // TODO: optimize
+    let result = game.apply_action(action);
+    (StatusCode::OK, Json(result))
 }
 
 #[derive(Serialize)]
