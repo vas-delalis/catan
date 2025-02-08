@@ -83,7 +83,7 @@ pub const DEV_CARDS: [DevCard; 5] = [
 
 #[derive(Serialize)]
 pub enum ActionResult {
-    DiceRolled(u8, Bundle),
+    DiceRolled(u8, Option<EnumMap<Player, Bundle>>),
     DevCardBought(DevCard),
     Monopolized(Resource, u8),
     ResourceStolen(Resource),

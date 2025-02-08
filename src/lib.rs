@@ -79,7 +79,38 @@ impl Default for State {
         resources[9] = None;
         rolls[9] = None;
 
-        State::new(resources, rolls)
+        let mut state = State::new(resources, rolls);
+
+        fn sett(s: &mut State, p: Player, v: Vertex) {
+            s.board.add_settlement(p, s.board.vertex_id(v));
+        }
+
+        fn road(s: &mut State, p: Player, e: Edge) {
+            s.board.add_road(p, s.board.edge_id(e));
+        }
+
+        let mut s = |p: Player, v: Vertex| sett(&mut state, p, v);
+
+        s(Blue, Vertex(-2, 2, N));
+        s(Blue, Vertex(0, 2, N));
+        s(Orange, Vertex(2, -2, S));
+        s(Orange, Vertex(-1, 2, N));
+        s(Red, Vertex(0, -1, N));
+        s(Red, Vertex(-2, 1, N));
+        s(White, Vertex(-1, 0, N));
+        s(White, Vertex(1, 1, N));
+
+        let mut r = |p: Player, e: Edge| road(&mut state, p, e);
+        r(Blue, Edge(-2, 2, NE));
+        r(Blue, Edge(1, 1, W));
+        r(Orange, Edge(-1, 2, NE));
+        r(Orange, Edge(1, -1, NE));
+        r(Red, Edge(-2, 1, NE));
+        r(Red, Edge(0, -1, NE));
+        r(White, Edge(-1, 0, NW));
+        r(White, Edge(2, 0, W));
+
+        state
     }
 }
 
@@ -296,13 +327,15 @@ impl State {
 
     // === Action execution/application ===
 
-    pub fn apply_action(&mut self, action: Action) {
+    pub fn apply_action(&mut self, action: Action) -> Option<ActionResult> {
         use Action::*;
 
         let player = self.current_player();
         match action {
             RollDice => {
-                self.handle_dice_roll(self.roll_dice());
+                let roll = self.roll_dice();
+                let prod = self.handle_dice_roll(roll);
+                return Some(ActionResult::DiceRolled(roll, prod));
             }
             BuildSettlement(vertex_id) => {
                 self.give_to_bank(player, BUY_COSTS[Purchasable::Settlement]);
@@ -337,8 +370,11 @@ impl State {
                 }
             }
             StealResource(target) => {
-                self.steal_resource(self.current_player(), target);
+                let result = self.steal_resource(self.current_player(), target);
                 self.phase = Phase::Normal;
+                if let Some(r) = result {
+                    return Some(ActionResult::ResourceStolen(r));
+                }
             }
             DiscardResource(res) => {
                 let mut bundle = Bundle::splat(0);
@@ -374,6 +410,7 @@ impl State {
                 }
                 self.player_data[player].resources[res] += total;
                 self.phase = Phase::Normal;
+                return Some(ActionResult::Monopolized(res, total));
             }
             TakeFreeResource(res) => {
                 let mut bundle = Bundle::splat(0);
@@ -402,6 +439,7 @@ impl State {
                     self.locked_dev_cards[card] = true;
                 }
                 self.dev_cards[player][card] += 1;
+                return Some(ActionResult::DevCardBought(card));
             }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
@@ -412,6 +450,7 @@ impl State {
             }
             _ => {}
         }
+        None
     }
 
     fn activate_dev_card(&mut self, card: DevCard) {
@@ -448,13 +487,14 @@ impl State {
         }
     }
 
-    /// Player steals random resource card from target
-    fn steal_resource(&mut self, player: Player, target: Player) {
+    /// Takes random resource unit from `target`, gives it to `player`,
+    /// and returns the resource type (or `None` if target had nothing to steal).
+    fn steal_resource(&mut self, player: Player, target: Player) -> Option<Resource> {
         assert_ne!(player, target);
         let target_bundle = &mut self.player_data[target].resources;
 
         if target_bundle.count_nonzero() == 0 {
-            return;
+            return None;
         }
 
         let arr = target_bundle.data.as_array();
@@ -465,6 +505,7 @@ impl State {
         target_bundle[res] -= 1;
         let player_bundle = &mut self.player_data[player].resources;
         player_bundle[res] += 1;
+        Some(res)
     }
 
     /// Returns the sum of two fair dice rolls.
@@ -473,7 +514,12 @@ impl State {
         rng.gen_range(1..=6) + rng.gen_range(1..=6)
     }
 
-    fn handle_dice_roll(&mut self, roll: u8) {
+    /// Carries out the effects of a given dice roll.
+    ///
+    /// If the roll is a 7: handles resource discarding, moving the robber, etc.
+    ///
+    /// Otherwise: gives each player their resource production and then returns it.
+    fn handle_dice_roll(&mut self, roll: u8) -> Option<EnumMap<Player, Bundle>> {
         self.has_rolled = true;
         if roll == 7 {
             let mut to_discard = Bundle::splat(0);
@@ -489,12 +535,14 @@ impl State {
             } else {
                 Phase::Discarding(to_discard)
             };
+            return None;
         } else {
             // Calculate resource production (for each resource, for each player)
             let production = self.board.produce_resources(roll, self.bank.resources);
             for player in PLAYERS {
                 self.take_from_bank(player, production[player]);
             }
+            return Some(production);
         }
     }
 }
@@ -513,26 +561,26 @@ mod tests {
 
     fn setup() -> State {
         let mut state = State::default();
-        let mut s = |p: Player, v: Vertex| sett(&mut state, p, v);
+        // let mut s = |p: Player, v: Vertex| sett(&mut state, p, v);
 
-        s(Blue, Vertex(-2, 2, N));
-        s(Blue, Vertex(0, 2, N));
-        s(Orange, Vertex(2, -2, S));
-        s(Orange, Vertex(-1, 2, N));
-        s(Red, Vertex(0, -1, N));
-        s(Red, Vertex(-2, 1, N));
-        s(White, Vertex(-1, 0, N));
-        s(White, Vertex(1, 1, N));
+        // s(Blue, Vertex(-2, 2, N));
+        // s(Blue, Vertex(0, 2, N));
+        // s(Orange, Vertex(2, -2, S));
+        // s(Orange, Vertex(-1, 2, N));
+        // s(Red, Vertex(0, -1, N));
+        // s(Red, Vertex(-2, 1, N));
+        // s(White, Vertex(-1, 0, N));
+        // s(White, Vertex(1, 1, N));
 
-        let mut r = |p: Player, e: Edge| road(&mut state, p, e);
-        r(Blue, Edge(-2, 2, NE));
-        r(Blue, Edge(1, 1, W));
-        r(Orange, Edge(-1, 2, NE));
-        r(Orange, Edge(1, -1, NE));
-        r(Red, Edge(-2, 1, NE));
-        r(Red, Edge(0, -1, NE));
-        r(White, Edge(-1, 0, NW));
-        r(White, Edge(2, 0, W));
+        // let mut r = |p: Player, e: Edge| road(&mut state, p, e);
+        // r(Blue, Edge(-2, 2, NE));
+        // r(Blue, Edge(1, 1, W));
+        // r(Orange, Edge(-1, 2, NE));
+        // r(Orange, Edge(1, -1, NE));
+        // r(Red, Edge(-2, 1, NE));
+        // r(Red, Edge(0, -1, NE));
+        // r(White, Edge(-1, 0, NW));
+        // r(White, Edge(2, 0, W));
 
         state
     }
