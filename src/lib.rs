@@ -60,37 +60,9 @@ struct PlayerData {
 
 impl Default for State {
     fn default() -> Self {
-        let mut resources: Vec<Option<Resource>> = [
-            Ore, Wool, Lumber, Grain, Brick, Wool, Brick, Grain, Lumber, Ore, // <- Desert
-            Lumber, Ore, Lumber, Ore, Grain, Wool, Brick, Grain, Wool,
-        ]
-        .into_iter()
-        .map(Some)
-        .collect();
+        let mut b = Board::default();
 
-        let mut rolls: Vec<Option<u8>> = [
-            10, 2, 9, 12, 6, 4, 10, 9, 11, 7, // <- Desert
-            3, 8, 8, 3, 4, 5, 5, 6, 11,
-        ]
-        .into_iter()
-        .map(Some)
-        .collect();
-
-        resources[9] = None;
-        rolls[9] = None;
-
-        let mut state = State::new(resources, rolls);
-
-        fn sett(s: &mut State, p: Player, v: Vertex) {
-            s.board.add_settlement(p, s.board.vertex_id(v));
-        }
-
-        fn road(s: &mut State, p: Player, e: Edge) {
-            s.board.add_road(p, s.board.edge_id(e));
-        }
-
-        let mut s = |p: Player, v: Vertex| sett(&mut state, p, v);
-
+        let mut s = |p: Player, v: Vertex| b.add_settlement(p, b.vertex_id(v));
         s(Blue, Vertex(-2, 2, N));
         s(Blue, Vertex(0, 2, N));
         s(Orange, Vertex(2, -2, S));
@@ -100,7 +72,7 @@ impl Default for State {
         s(White, Vertex(-1, 0, N));
         s(White, Vertex(1, 1, N));
 
-        let mut r = |p: Player, e: Edge| road(&mut state, p, e);
+        let mut r = |p: Player, e: Edge| b.add_road(p, b.edge_id(e));
         r(Blue, Edge(-2, 2, NE));
         r(Blue, Edge(1, 1, W));
         r(Orange, Edge(-1, 2, NE));
@@ -110,17 +82,17 @@ impl Default for State {
         r(White, Edge(-1, 0, NW));
         r(White, Edge(2, 0, W));
 
-        state
+        State::new(b)
     }
 }
 
 impl State {
-    pub fn new(resources: Vec<Option<Resource>>, rolls: Vec<Option<u8>>) -> Self {
-        let stockpile = Bank::bank();
+    pub fn new(board: Board) -> Self {
+        let bank = Bank::bank();
 
         State {
-            bank: stockpile,
-            board: Board::new(resources, rolls),
+            bank,
+            board,
             whose_turn: PLAYERS[0],
             turn_order: PLAYERS,
             player_data: EnumMap::from_fn(|_| PlayerData {
@@ -551,40 +523,6 @@ impl State {
 mod tests {
     use super::*;
 
-    fn sett(s: &mut State, p: Player, v: Vertex) {
-        s.board.add_settlement(p, s.board.vertex_id(v));
-    }
-
-    fn road(s: &mut State, p: Player, e: Edge) {
-        s.board.add_road(p, s.board.edge_id(e));
-    }
-
-    fn setup() -> State {
-        let mut state = State::default();
-        // let mut s = |p: Player, v: Vertex| sett(&mut state, p, v);
-
-        // s(Blue, Vertex(-2, 2, N));
-        // s(Blue, Vertex(0, 2, N));
-        // s(Orange, Vertex(2, -2, S));
-        // s(Orange, Vertex(-1, 2, N));
-        // s(Red, Vertex(0, -1, N));
-        // s(Red, Vertex(-2, 1, N));
-        // s(White, Vertex(-1, 0, N));
-        // s(White, Vertex(1, 1, N));
-
-        // let mut r = |p: Player, e: Edge| road(&mut state, p, e);
-        // r(Blue, Edge(-2, 2, NE));
-        // r(Blue, Edge(1, 1, W));
-        // r(Orange, Edge(-1, 2, NE));
-        // r(Orange, Edge(1, -1, NE));
-        // r(Red, Edge(-2, 1, NE));
-        // r(Red, Edge(0, -1, NE));
-        // r(White, Edge(-1, 0, NW));
-        // r(White, Edge(2, 0, W));
-
-        state
-    }
-
     fn apply_actions(s: &mut State, actions: Vec<Action>) {
         for action in actions {
             s.get_actions();
@@ -595,7 +533,7 @@ mod tests {
     #[test]
     fn resource_discarding() {
         // TODO: split
-        let mut s = setup();
+        let mut s = State::default();
         s.player_data[Blue].resources = Bundle::from_slice(&[2, 2, 2, 2, 0]);
         s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
         s.player_data[Red].resources = Bundle::from_slice(&[2, 2, 0, 0, 0]);
@@ -616,7 +554,7 @@ mod tests {
 
     #[test]
     fn must_steal_after_moving_robber() {
-        let mut s = setup();
+        let mut s = State::default();
         s.handle_dice_roll(7);
 
         // Move robber to hex with red & white settlements
@@ -630,7 +568,7 @@ mod tests {
 
     #[test]
     fn stealing_transfers_one_resource() {
-        let mut s = setup();
+        let mut s = State::default();
         let starting_blue = Bundle::from_slice(&[2, 2, 2, 0, 0]);
         let starting_red = Bundle::from_slice(&[2, 2, 0, 0, 0]);
         s.player_data[Blue].resources = starting_blue;
@@ -653,7 +591,7 @@ mod tests {
 
     #[test]
     fn can_exchange_4_to_1() {
-        let mut s = setup();
+        let mut s = State::default();
 
         s.player_data[Blue].resources = Bundle::splat(4);
 
@@ -664,11 +602,12 @@ mod tests {
     }
     #[test]
     fn can_exchange_3_to_1_with_generic_harbor() {
-        let mut s = setup();
+        let mut s = State::default();
         s.player_data[Blue].resources = Bundle::splat(3);
 
         // Add generic harbor
-        sett(&mut s, Blue, Vertex(0, -2, N));
+        s.board
+            .add_settlement(Blue, s.board.vertex_id(Vertex(0, -2, N)));
 
         let actions = s.get_actions();
         assert!(actions
@@ -678,11 +617,12 @@ mod tests {
 
     #[test]
     fn can_exchange_2_to_1_with_resource_harbor() {
-        let mut s = setup();
+        let mut s = State::default();
         s.player_data[Blue].resources = Bundle::splat(2);
 
         // Add grain harbor
-        sett(&mut s, Blue, Vertex(2, -3, S));
+        s.board
+            .add_settlement(Blue, s.board.vertex_id(Vertex(2, -3, S)));
 
         let actions = s.get_actions();
         assert!(actions
@@ -692,7 +632,7 @@ mod tests {
 
     #[test]
     fn bank_shortage_prevents_exchange() {
-        let mut s = setup();
+        let mut s = State::default();
         s.bank.resources = Bundle::splat(0);
 
         s.player_data[Blue].resources = Bundle::splat(4);
@@ -705,7 +645,7 @@ mod tests {
 
     #[test]
     fn exchange_resources() {
-        let mut s = setup();
+        let mut s = State::default();
         s.player_data[Blue].resources = Bundle::splat(4);
 
         s.apply_action(ExchangeResources(((Brick, 4), Grain)));
@@ -716,7 +656,7 @@ mod tests {
 
     #[test]
     fn road_building_card_returns_to_normal_phase() {
-        let mut s = setup();
+        let mut s = State::default();
         s.activate_dev_card(DevCard::RoadBuilding);
 
         s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
@@ -730,7 +670,7 @@ mod tests {
 
     #[test]
     fn must_build_roads_after_playing_road_building_card() {
-        let mut s = setup();
+        let mut s = State::default();
 
         s.activate_dev_card(DevCard::RoadBuilding);
 
@@ -743,7 +683,7 @@ mod tests {
 
     #[test]
     fn roads_from_road_building_card_are_free() {
-        let mut s = setup();
+        let mut s = State::default();
         let starting_resources = Bundle::splat(5);
         s.player_data[Blue].resources = starting_resources;
         s.activate_dev_card(DevCard::RoadBuilding);
@@ -758,7 +698,7 @@ mod tests {
 
     #[test]
     fn must_move_robber_after_playing_knight() {
-        let mut s = setup();
+        let mut s = State::default();
 
         s.activate_dev_card(DevCard::Knight);
 
@@ -771,7 +711,7 @@ mod tests {
 
     #[test]
     fn first_with_size_3_army_gets_points() {
-        let mut s = setup();
+        let mut s = State::default();
         s.activate_dev_card(DevCard::Knight);
         s.activate_dev_card(DevCard::Knight);
         let before = s.victory_points(Blue);
@@ -784,7 +724,7 @@ mod tests {
 
     #[test]
     fn surpassing_army_leader_transfers_points() {
-        let mut s = setup();
+        let mut s = State::default();
         s.army_leader = Some(Red);
         s.armies[Red] = 3;
         s.armies[Blue] = 3; // (Red got to 3 before Blue)
@@ -802,7 +742,7 @@ mod tests {
 
     #[test]
     fn must_monopolize_after_playing_monopoly() {
-        let mut s = setup();
+        let mut s = State::default();
 
         s.activate_dev_card(DevCard::Monopoly);
 
@@ -815,7 +755,7 @@ mod tests {
 
     #[test]
     fn monopolizing_transfers_all_resources_of_type() {
-        let mut s = setup();
+        let mut s = State::default();
         s.player_data[Blue].resources = Bundle::from_slice(&[2, 2, 2, 2, 0]);
         s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
         s.player_data[Red].resources = Bundle::from_slice(&[2, 2, 0, 0, 0]);
@@ -832,7 +772,7 @@ mod tests {
 
     #[test]
     fn must_take_resources_after_playing_year_of_plenty() {
-        let mut s = setup();
+        let mut s = State::default();
 
         s.activate_dev_card(DevCard::YearOfPlenty);
 
@@ -845,7 +785,7 @@ mod tests {
 
     #[test]
     fn take_resource_transfers_from_bank_to_player() {
-        let mut s = setup();
+        let mut s = State::default();
         s.player_data[Blue].resources = Bundle::splat(0);
         let bank_before = s.bank.resources[Brick];
         s.activate_dev_card(DevCard::YearOfPlenty);
@@ -859,7 +799,7 @@ mod tests {
 
     #[test]
     fn newly_bought_dev_cards_are_not_playable() {
-        let mut s = setup();
+        let mut s = State::default();
         s.player_data[Blue].resources = Bundle::splat(5);
         s.apply_action(BuyDevCard);
 
@@ -870,7 +810,7 @@ mod tests {
 
     #[test]
     fn max_one_dev_card_played_per_turn() {
-        let mut s = setup();
+        let mut s = State::default();
         s.apply_action(BuyDevCard);
         s.apply_action(BuyDevCard);
         s.locked_dev_cards = EnumMap::from_fn(|_| false);

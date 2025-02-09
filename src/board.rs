@@ -216,6 +216,32 @@ impl Clone for Board {
     }
 }
 
+impl Default for Board {
+    fn default() -> Self {
+        let mut resources: Vec<Option<Resource>> = [
+            Ore, Wool, Lumber, Grain, Brick, Wool, Brick, Grain, Lumber, Ore, // <- Desert
+            Lumber, Ore, Lumber, Ore, Grain, Wool, Brick, Grain, Wool,
+        ]
+        .into_iter()
+        .map(Some)
+        .collect();
+
+        let mut rolls: Vec<Option<u8>> = [
+            10, 2, 9, 12, 6, 4, 10, 9, 11, 7, // <- Desert
+            3, 8, 8, 3, 4, 5, 5, 6, 11,
+        ]
+        .into_iter()
+        .map(Some)
+        .collect();
+
+        // Overwrite desert tile
+        resources[9] = None;
+        rolls[9] = None;
+
+        Board::new(resources, rolls)
+    }
+}
+
 impl Board {
     /// Creates and returns a new Board.
     ///
