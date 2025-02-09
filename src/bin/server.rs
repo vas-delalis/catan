@@ -39,7 +39,6 @@ async fn get_initial_observation() -> Json<InitialObservation> {
             3, 8, 8, 3, 4, 5, 5, 6, 11,
         ],
         desert: 9 as HexId,
-        robber: 9,
         settlements: vec![],
         roads: vec![],
     })
@@ -64,7 +63,6 @@ struct InitialObservation {
     resources: Vec<Resource>,
     rolls: Vec<u8>,
     desert: HexId,
-    robber: HexId,
     settlements: Vec<(Player, VertexId)>,
     roads: Vec<(Player, EdgeId)>,
     // TODO: harbors

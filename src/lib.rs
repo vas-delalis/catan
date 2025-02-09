@@ -130,6 +130,7 @@ impl State {
             current_player: self.current_player(),
             is_terminal: self.is_terminal(),
             actions: self.get_actions(),
+            robber: self.board.robber_hex_id(),
             observer_hand: ObserverHand {
                 resources: EnumMap::from_fn(|r| self.player_data[observer].resources[r]),
                 dev_cards: EnumMap::from_fn(|c| self.dev_cards[observer][c]),

@@ -97,6 +97,7 @@ pub struct Observation {
     pub actions: Vec<Action>,
     pub observer_hand: ObserverHand,
     pub hidden_hands: Vec<HiddenHand>,
+    pub robber: HexId,
 }
 
 #[derive(Serialize)]
