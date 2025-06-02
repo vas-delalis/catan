@@ -1,6 +1,6 @@
 use crate::{bundle::Bundle, common::*};
 use enum_map::{enum_map, Enum, EnumMap};
-use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
+use rand::{distr::weighted::WeightedIndex, prelude::Distribution, rng};
 use DevCard::*;
 
 pub struct Bank {
@@ -46,7 +46,7 @@ impl Bank {
     }
 
     pub fn draw_random_dev_card(&mut self) -> DevCard {
-        let mut rng = thread_rng();
+        let mut rng = rng();
         let card = DevCard::from_usize(self.dev_card_rand_index.sample(&mut rng));
         self.dev_cards[card] -= 1;
         self.dev_card_rand_index

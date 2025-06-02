@@ -14,7 +14,7 @@ use std::{
     simd::{cmp::SimdPartialOrd, num::SimdUint},
 };
 
-use rand::distributions::WeightedIndex;
+use rand::distr::weighted::WeightedIndex;
 use Action::*;
 
 use {
