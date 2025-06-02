@@ -179,6 +179,9 @@ struct SharedBoardData {
     vert_to_edges: Vec<Bitboard<E>>,
     edge_to_edges: Vec<Bitboard<E>>,
 
+    resources: Vec<Option<Resource>>,
+    rolls: Vec<Option<u8>>,
+
     roll_resources: Vec<Vec<Bitboard<V>>>, // Vertices that receive a given resource on a given roll
     generic_harbors: Bitboard<V>,
     resource_harbors: EnumMap<Resource, Bitboard<V>>,
@@ -326,6 +329,9 @@ impl Board {
             vert_to_edges,
             edge_to_edges,
 
+            resources,
+            rolls,
+
             roll_resources,
             generic_harbors,
             resource_harbors,
@@ -385,6 +391,13 @@ impl Board {
     /// Get the set of vertices that receive a given resource on a given roll.
     fn roll_resource_vertices(&self, roll: u8, resource: Resource) -> Bitboard<V> {
         self.shared_data.roll_resources[(roll - 2) as usize][resource as usize]
+    }
+
+    pub fn game_map(&self) -> InitialObservation {
+        InitialObservation {
+            resources: self.shared_data.resources.clone(),
+            rolls: self.shared_data.rolls.clone(),
+        }
     }
 
     // Gameplay

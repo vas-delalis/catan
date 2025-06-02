@@ -124,7 +124,12 @@ impl State {
         self.victory_points(self.whose_turn) >= 10
     }
 
-    /// Get the current state from the perspective of a given player.
+    /// Returns the parts of an observation that remain static throughout the game.
+    pub fn observe_initial(&self) -> InitialObservation {
+        self.board.game_map()
+    }
+
+    /// Gets the current state from the perspective of a given player.
     pub fn observe(&self, observer: Player) -> Observation {
         Observation {
             observer,
@@ -185,6 +190,8 @@ impl State {
 
     // === Action generation ===
 
+    /// Gets the current player's available actions.
+    // TODO: given player instead of current
     pub fn get_actions(&self) -> Vec<Action> {
         let player = self.current_player();
         let player_data = &self.player_data[player];

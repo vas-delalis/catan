@@ -90,6 +90,13 @@ pub enum ActionResult {
 }
 
 #[derive(Serialize)]
+pub struct InitialObservation {
+    pub resources: Vec<Option<Resource>>,
+    pub rolls: Vec<Option<u8>>,
+    // TODO: harbors
+}
+
+#[derive(Serialize)]
 pub struct Observation {
     pub observer: Player,
     pub current_player: Player,
