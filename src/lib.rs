@@ -7,7 +7,6 @@ pub mod common;
 
 pub use board::*;
 pub use common::*;
-use enum_map::Enum;
 
 use std::{
     cmp::min,
@@ -346,10 +345,11 @@ impl State {
                 self.board.add_road(player, edge_id);
                 self.bank.buildings[player][Purchasable::Road] -= 1;
                 self.phase = match self.phase {
-                    Phase::RoadBuilding(1) => {
+                    Phase::Normal => {
                         self.give_to_bank(player, BUY_COSTS[Purchasable::Road]);
                         Phase::Normal
                     }
+                    Phase::RoadBuilding(1) => Phase::Normal,
                     Phase::RoadBuilding(remaining) => Phase::RoadBuilding(remaining - 1),
                     Phase::Setup => Phase::Setup,
                     _ => panic!("tried to build road in invalid phase"),
@@ -493,7 +493,7 @@ impl State {
 
         let arr = target_bundle.data.as_array();
         let index = WeightedIndex::new(&arr[..5]).unwrap();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let res = RESOURCES[index.sample(&mut rng)];
         target_bundle[res] -= 1;
@@ -504,8 +504,8 @@ impl State {
 
     /// Returns the sum of two fair dice rolls.
     fn roll_dice(&self) -> u8 {
-        let mut rng = rand::thread_rng();
-        rng.gen_range(1..=6) + rng.gen_range(1..=6)
+        let mut rng = rand::rng();
+        rng.random_range(1..=6) + rng.random_range(1..=6)
     }
 
     /// Carries out the effects of a given dice roll.
@@ -673,6 +673,14 @@ mod tests {
 
         assert_eq!(s.player_data[Blue].resources[Brick], 0);
         assert_eq!(s.player_data[Blue].resources[Grain], 5);
+    }
+
+    #[test]
+    fn can_build_road_in_normal_phase() {
+        let mut s = State::default();
+        s.player_data[Blue].resources = BUY_COSTS[Purchasable::Road];
+
+        s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
     }
 
     #[test]
