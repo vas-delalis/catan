@@ -98,6 +98,8 @@ pub struct Observation {
     pub observer_hand: ObserverHand,
     pub hidden_hands: Vec<HiddenHand>,
     pub robber: HexId,
+    pub buildings: Vec<(Player, VertexId, bool)>,
+    pub roads: Vec<(Player, EdgeId)>,
 }
 
 #[derive(Serialize)]

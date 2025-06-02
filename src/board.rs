@@ -397,8 +397,16 @@ impl Board {
         (self.road_slots & self.player_road_slots[player]).into()
     }
 
-    pub fn available_cities(&self, player: Player) -> Bitboard<V> {
+    pub fn settlements(&self, player: Player) -> Bitboard<V> {
         self.player_buildings[player] & !self.cities
+    }
+
+    pub fn cities(&self, player: Player) -> Bitboard<V> {
+        self.player_buildings[player] & self.cities
+    }
+
+    pub fn roads(&self, player: Player) -> Bitboard<E> {
+        self.player_roads[player]
     }
 
     pub fn add_settlement(&mut self, player: Player, vertex_id: VertexId) {
@@ -486,7 +494,7 @@ impl Board {
         player_bundles
     }
 
-    // City flags in leftover bits would save 1 lanewise popcnt and 1 bitwise and
+    // City flags in leftover bits would save 1 lanewise popcnt and 1 bitwise AND
     // https://stackoverflow.com/questions/51104493/is-it-possible-to-popcount-m256i-and-store-result-in-8-32-bit-words-instead-of
 
     /// Returns the victory points a player gets from buildings and the longest road marker.

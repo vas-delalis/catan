@@ -7,6 +7,7 @@ pub mod common;
 
 pub use board::*;
 pub use common::*;
+use enum_map::Enum;
 
 use std::{
     cmp::min,
@@ -131,6 +132,18 @@ impl State {
             is_terminal: self.is_terminal(),
             actions: self.get_actions(),
             robber: self.board.robber_hex_id(),
+            buildings: PLAYERS
+                .into_iter()
+                .flat_map(|p| {
+                    let settlements = self.board.settlements(p).map(move |v| (p, v, false));
+                    let cities = self.board.cities(p).map(move |v| (p, v, true));
+                    settlements.chain(cities)
+                })
+                .collect(),
+            roads: PLAYERS
+                .into_iter()
+                .flat_map(|p| self.board.roads(p).map(move |e| (p, e)))
+                .collect(),
             observer_hand: ObserverHand {
                 resources: EnumMap::from_fn(|r| self.player_data[observer].resources[r]),
                 dev_cards: EnumMap::from_fn(|c| self.dev_cards[observer][c]),
@@ -194,7 +207,7 @@ impl State {
                                 actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
                             }
                             Purchasable::City => {
-                                let settlements = self.board.available_cities(player);
+                                let settlements = self.board.settlements(player);
                                 actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
                             }
                             Purchasable::Road => {
