@@ -285,6 +285,7 @@ impl State {
         self.board
             .players_on_hex(hex_id)
             .into_iter()
+            .filter(|&p| p != self.current_player())
             .map(|p| StealResource(p))
             .collect()
     }
@@ -357,14 +358,7 @@ impl State {
             }
             MoveRobber(hex_id) => {
                 self.board.move_robber(hex_id);
-                self.phase = if self
-                    .board
-                    .players_on_hex(hex_id)
-                    .into_iter()
-                    .filter(|&p| p != player)
-                    .count()
-                    > 0
-                {
+                self.phase = if self.get_steal_actions(hex_id).len() > 0 {
                     Phase::StealingResources(hex_id)
                 } else {
                     Phase::Normal
@@ -620,6 +614,20 @@ mod tests {
         let actions = s.get_actions(s.current_player());
         // No steal actions
         assert!(!actions.into_iter().any(|a| matches!(a, StealResource(_))));
+    }
+
+    #[test]
+    fn cannot_steal_from_self() {
+        let mut s = State::default();
+
+        s.handle_dice_roll(7);
+
+        // Move robber to hex settled by Blue and Orange
+        s.apply_action(MoveRobber(s.board.hex_id(Hex(0, 1))));
+        let actions = s.get_actions(s.current_player());
+        // Can only steal from Orange
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0], StealResource(Orange));
     }
 
     #[test]
