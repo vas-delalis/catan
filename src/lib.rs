@@ -169,7 +169,7 @@ impl State {
     /// Returns the a player's victory points.
     ///
     /// 1 per settlement; 2 per city; 1 per VP card; 2 for largest army; 2 for longest road.
-    fn victory_points(&self, player: Player) -> u32 {
+    pub fn victory_points(&self, player: Player) -> u32 {
         let from_board = self.board.victory_points(player);
         let largest_army = 2 * (self.army_leader == Some(player)) as u32;
         from_board + self.dev_cards[player][DevCard::VictoryPoint] as u32 + largest_army
@@ -457,7 +457,9 @@ impl State {
                     self.bank
                         .purchasable_count(self.whose_turn, Purchasable::Road),
                 );
-                self.phase = Phase::RoadBuilding(to_build);
+                if to_build > 0 {
+                    self.phase = Phase::RoadBuilding(to_build);
+                }
             }
             Knight => {
                 self.phase = Phase::MovingRobber;
@@ -766,6 +768,19 @@ mod tests {
             s.player_data[Blue].resources, starting_resources,
             "resources should remain unchanged after building road"
         );
+    }
+
+    #[test]
+    fn skip_road_building_if_no_roads_available() {
+        let mut s = State::default();
+        let p = s.current_player();
+        s.bank.buildings[p][Purchasable::Road] = 0;
+
+        s.activate_dev_card(DevCard::RoadBuilding);
+        dbg!(p);
+        dbg!(s.bank.purchasable_count(p, Purchasable::Road));
+
+        assert!(matches!(s.phase, Phase::Normal));
     }
 
     #[test]
