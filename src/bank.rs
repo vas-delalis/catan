@@ -49,9 +49,11 @@ impl Bank {
         let mut rng = rng();
         let card = DevCard::from_usize(self.dev_card_rand_index.sample(&mut rng));
         self.dev_cards[card] -= 1;
-        self.dev_card_rand_index
-            .update_weights(&[(card as usize, &self.dev_cards[card])])
-            .unwrap();
+        if self.dev_cards.reduce_sum() > 0 {
+            self.dev_card_rand_index
+                .update_weights(&[(card as usize, &self.dev_cards[card])])
+                .unwrap();
+        }
         card
     }
 
@@ -65,5 +67,18 @@ impl Bank {
         self.dev_card_rand_index
             .update_weights(&[(card as usize, &self.dev_cards[card])])
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_draw_all_dev_cards() {
+        let mut b = Bank::bank();
+        for _ in 0..b.purchasable_count(Blue, Purchasable::DevCard) {
+            b.draw_random_dev_card();
+        }
     }
 }
