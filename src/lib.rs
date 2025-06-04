@@ -357,7 +357,14 @@ impl State {
             }
             MoveRobber(hex_id) => {
                 self.board.move_robber(hex_id);
-                self.phase = if self.board.players_on_hex(hex_id).len() > 0 {
+                self.phase = if self
+                    .board
+                    .players_on_hex(hex_id)
+                    .into_iter()
+                    .filter(|&p| p != player)
+                    .count()
+                    > 0
+                {
                     Phase::StealingResources(hex_id)
                 } else {
                     Phase::Normal
@@ -585,6 +592,34 @@ mod tests {
         assert_eq!(actions.len(), 2);
         assert!(actions.contains(&StealResource(Red)));
         assert!(actions.contains(&StealResource(White)));
+    }
+
+    #[test]
+    fn skip_stealing_if_no_players_on_hex() {
+        let mut s = State::default();
+        // Move robber off desert
+        s.board.move_robber(s.board.hex_id(Hex(1, 0)));
+        s.handle_dice_roll(7);
+
+        // Move robber back onto desert
+        s.apply_action(MoveRobber(s.board.hex_id(Hex(0, 0))));
+
+        let actions = s.get_actions(s.current_player());
+        // No steal actions
+        assert!(!actions.into_iter().any(|a| matches!(a, StealResource(_))));
+    }
+
+    #[test]
+    fn skip_stealing_if_no_enemies_on_hex() {
+        let mut s = State::default();
+
+        s.handle_dice_roll(7);
+
+        // Move robber to hex only settled by Blue
+        s.apply_action(MoveRobber(s.board.hex_id(Hex(0, 2))));
+        let actions = s.get_actions(s.current_player());
+        // No steal actions
+        assert!(!actions.into_iter().any(|a| matches!(a, StealResource(_))));
     }
 
     #[test]
