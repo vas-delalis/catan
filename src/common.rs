@@ -96,7 +96,7 @@ pub struct InitialObservation {
     // TODO: harbors
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Observation {
     pub observer: Player,
     pub current_player: Player,
@@ -109,13 +109,13 @@ pub struct Observation {
     pub roads: Vec<(Player, EdgeId)>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct ObserverHand {
     pub resources: EnumMap<Resource, u8>,
     pub dev_cards: EnumMap<DevCard, u8>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct HiddenHand {
     pub player: Player,
     pub resources: u8,

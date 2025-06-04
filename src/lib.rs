@@ -253,6 +253,26 @@ impl State {
             Phase::MovingRobber => self.get_robber_actions(),
             Phase::RoadBuilding(remaining) => {
                 let slots = self.board.available_roads(player);
+                // dbg!(player);
+                // dbg!(self.board.available_roads(player));
+                // dbg!(PLAYERS
+                //     .into_iter()
+                //     .flat_map(|p| {
+                //         let settlements = self
+                //             .board
+                //             .settlements(p)
+                //             .map(move |v| (p, self.board.vertex(v), false));
+                //         let cities = self
+                //             .board
+                //             .cities(p)
+                //             .map(move |v| (p, self.board.vertex(v), true));
+                //         settlements.chain(cities)
+                //     })
+                //     .collect::<Vec<(Player, Vertex, bool)>>());
+                // dbg!(PLAYERS
+                //     .into_iter()
+                //     .flat_map(|p| self.board.roads(p).map(move |e| (p, self.board.edge(e))))
+                //     .collect::<Vec<(Player, Edge)>>());
                 assert!(slots.count_ones() > 0);
                 slots
                     .take(remaining as usize)
@@ -453,9 +473,12 @@ impl State {
         match card {
             RoadBuilding => {
                 let to_build = min(
-                    2,
-                    self.bank
-                        .purchasable_count(self.whose_turn, Purchasable::Road),
+                    min(
+                        2,
+                        self.bank
+                            .purchasable_count(self.whose_turn, Purchasable::Road),
+                    ),
+                    self.board.available_roads(self.whose_turn).count_ones() as u8,
                 );
                 if to_build > 0 {
                     self.phase = Phase::RoadBuilding(to_build);
@@ -777,8 +800,21 @@ mod tests {
         s.bank.buildings[p][Purchasable::Road] = 0;
 
         s.activate_dev_card(DevCard::RoadBuilding);
-        dbg!(p);
-        dbg!(s.bank.purchasable_count(p, Purchasable::Road));
+
+        assert!(matches!(s.phase, Phase::Normal));
+    }
+
+    #[test]
+    fn skip_road_building_if_no_road_slots_available() {
+        let mut s = State::default();
+        let p = s.current_player();
+        // Build all available roads
+        while s.board.available_roads(p).count_ones() > 0 {
+            s.board
+                .add_road(p, s.board.available_roads(p).next().unwrap());
+        }
+
+        s.activate_dev_card(DevCard::RoadBuilding);
 
         assert!(matches!(s.phase, Phase::Normal));
     }
