@@ -378,7 +378,7 @@ impl State {
             }
             MoveRobber(hex_id) => {
                 self.board.move_robber(hex_id);
-                self.phase = if self.get_steal_actions(hex_id).len() > 0 {
+                self.phase = if !self.get_steal_actions(hex_id).is_empty() {
                     Phase::StealingResources(hex_id)
                 } else {
                     Phase::Normal
