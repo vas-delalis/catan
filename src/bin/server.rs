@@ -39,8 +39,6 @@ async fn get_initial_observation() -> Json<InitialObservation> {
             3, 8, 8, 3, 4, 5, 5, 6, 11,
         ],
         desert: 9 as HexId,
-        settlements: vec![],
-        roads: vec![],
     })
 }
 
@@ -53,7 +51,7 @@ async fn apply_action(
     Json(payload): Json<ApplyActionPayload>,
 ) -> (StatusCode, Json<Option<ActionResult>>) {
     let mut game = GAME.lock().unwrap();
-    let action = game.get_actions()[payload.action_id]; // TODO: optimize
+    let action = game.get_actions(game.current_player())[payload.action_id]; // TODO: optimize
     let result = game.apply_action(action);
     (StatusCode::OK, Json(result))
 }
@@ -63,7 +61,5 @@ struct InitialObservation {
     resources: Vec<Resource>,
     rolls: Vec<u8>,
     desert: HexId,
-    settlements: Vec<(Player, VertexId)>,
-    roads: Vec<(Player, EdgeId)>,
     // TODO: harbors
 }

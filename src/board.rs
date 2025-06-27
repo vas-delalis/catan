@@ -23,7 +23,7 @@ pub struct Hex(pub i8, pub i8);
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Vertex(pub i8, pub i8, pub VertexDir);
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Edge(pub i8, pub i8, pub EdgeDir);
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -32,7 +32,7 @@ pub enum VertexDir {
     S,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EdgeDir {
     W,
     NW,
@@ -400,6 +400,8 @@ impl Board {
         }
     }
 
+    // fn longest_road(&self, player: Player) -> u8 {}
+
     // Gameplay
 
     pub fn available_settlements(&self, player: Player) -> Bitboard<V> {
@@ -425,7 +427,7 @@ impl Board {
     pub fn add_settlement(&mut self, player: Player, vertex_id: VertexId) {
         self.player_buildings[player].add(vertex_id);
         // Mark vertex and neighbors as occupied
-        // (Currently, same-to-same[i] includes i itself, not just its neighbors.)
+        // (Currently, same_to_same[i] includes i itself, not just its neighbors.)
         self.settlement_slots &= !self.shared_data.vert_to_verts[vertex_id];
         // Allow adjacent roads
         self.player_road_slots[player] |= self.shared_data.vert_to_edges[vertex_id];
@@ -441,6 +443,7 @@ impl Board {
         self.player_road_slots[player] |= self.shared_data.edge_to_edges[edge_id];
 
         // TODO: longest road
+        // idea: keep track of the longest path as just a number
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
@@ -531,14 +534,17 @@ struct SimpleBoard {
 
 impl SimpleBoard {
     fn new() -> Self {
-        let n: i8 = 2; // Grid size
+        SimpleBoard::with_radius(2)
+    }
+
+    fn with_radius(r: i8) -> Self {
         let mut hexes = Vec::with_capacity(N_HEXES);
         let mut vertices = HashSet::with_capacity(N_VERTICES);
         let mut edges: HashSet<Edge> = HashSet::with_capacity(N_EDGES);
 
-        for r in -n..=n {
-            let q1 = max(-n, -r - n);
-            let q2 = min(n, -r + n);
+        for r in -r..=r {
+            let q1 = max(-r, -r - r);
+            let q2 = min(r, -r + r);
             for q in q1..=q2 {
                 let hex = Hex(q, r);
                 hexes.push(hex);
@@ -562,7 +568,8 @@ impl SimpleBoard {
             .map(|(id, &v)| (v, id))
             .collect();
 
-        let edges: Vec<Edge> = edges.into_iter().collect();
+        let mut edges: Vec<Edge> = edges.into_iter().collect();
+        edges.sort();
         // TODO: sort edges
         let edge_ids: HashMap<Edge, EdgeId> =
             edges.iter().enumerate().map(|(id, &e)| (e, id)).collect();
