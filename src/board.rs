@@ -537,14 +537,14 @@ impl SimpleBoard {
         SimpleBoard::with_radius(2)
     }
 
-    fn with_radius(r: i8) -> Self {
+    fn with_radius(radius: i8) -> Self {
         let mut hexes = Vec::with_capacity(N_HEXES);
         let mut vertices = HashSet::with_capacity(N_VERTICES);
         let mut edges: HashSet<Edge> = HashSet::with_capacity(N_EDGES);
 
-        for r in -r..=r {
-            let q1 = max(-r, -r - r);
-            let q2 = min(r, -r + r);
+        for r in -radius..=radius {
+            let q1 = max(-radius, -r - radius);
+            let q2 = min(radius, -r + radius);
             for q in q1..=q2 {
                 let hex = Hex(q, r);
                 hexes.push(hex);
