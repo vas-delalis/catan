@@ -29,6 +29,12 @@ impl<T: BitboardInt> Bitboard<T> {
         !Bitboard::default()
     }
 
+    pub fn single(id: usize) -> Self {
+        let mut board = Bitboard::default();
+        board.add(id);
+        board
+    }
+
     pub fn contains(&self, id: usize) -> bool {
         !(self.value & (T::one() << id)).is_zero()
     }

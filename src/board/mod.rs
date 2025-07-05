@@ -10,7 +10,11 @@ use std::{
 };
 
 use crate::{bundle::Bundle, common::*};
-use bitboard::Bitboard;
+pub use bitboard::Bitboard;
+
+mod road_length;
+pub use road_length::*;
+
 pub use EdgeDir::*;
 pub use VertexDir::*;
 
@@ -120,7 +124,11 @@ impl Vertex {
         let &Vertex(q, r, dir) = self;
         match dir {
             N => [Edge(q, r, NE), Edge(q, r, NW), Edge(q + 1, r - 1, W)],
-            S => [Edge(q, r + 1, W), Edge(q, r + 1, W), Edge(q - 1, r + 1, NE)],
+            S => [
+                Edge(q, r + 1, W),
+                Edge(q, r + 1, NW),
+                Edge(q - 1, r + 1, NE),
+            ],
         }
     }
 }
@@ -200,6 +208,7 @@ pub struct Board {
     cities: Bitboard<V>,
     robber_verts: Bitboard<V>, // 8 bytes to store 6 vertices? Or only store hex id but have to do a hex-to-vert lookup at runtime?
     robber: HexId,             // ...might have to store robber hex id anyway
+    longest_roads: EnumMap<Player, u8>,
 }
 
 impl Clone for Board {
@@ -215,6 +224,7 @@ impl Clone for Board {
             cities: self.cities.clone(),
             robber_verts: self.robber_verts.clone(),
             robber: self.robber.clone(),
+            longest_roads: self.longest_roads.clone(),
         }
     }
 }
@@ -351,6 +361,7 @@ impl Board {
             robber_verts: shared_data.hex_to_verts[center_hex_id],
             robber: center_hex_id,
             shared_data: Arc::new(shared_data),
+            longest_roads: EnumMap::default(),
         }
     }
 
@@ -442,6 +453,7 @@ impl Board {
         // Allow adjacent roads
         self.player_road_slots[player] |= self.shared_data.edge_to_edges[edge_id];
 
+        longest(self, player, false);
         // TODO: longest road
         // idea: keep track of the longest path as just a number
     }
