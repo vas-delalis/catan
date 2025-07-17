@@ -3,6 +3,7 @@ use enum_map::{enum_map, Enum, EnumMap};
 use rand::{distr::weighted::WeightedIndex, prelude::Distribution, rng};
 use DevCard::*;
 
+#[derive(Clone)]
 pub struct Bank {
     pub resources: Bundle,
     pub buildings: EnumMap<Player, Bundle>,
@@ -29,7 +30,7 @@ impl Bank {
             dev_card_rand_index: WeightedIndex::new(cards).unwrap(),
             buildings: enum_map! {
                 _ => Bundle::from_slice(&enum_map! {
-                    Purchasable::Road => 15,
+                    Purchasable::Road => 13, // TODO: change to 15 when setup-phase roads no longer appear out of thin air
                     Purchasable::Settlement => 5,
                     Purchasable::City => 4,
                     _ => 0
