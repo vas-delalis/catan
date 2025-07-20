@@ -1,44 +1,19 @@
 mod bitboard;
 mod hex_board;
-mod road_length;
+mod road_trails;
+mod shared_data;
 mod transformations;
 
-use enum_map::{enum_map, Enum, EnumMap};
+use enum_map::EnumMap;
 use std::{
     simd::{cmp::SimdOrd, u8x8},
     sync::Arc,
 };
 
-use crate::{bundle::Bundle, common::*};
+use crate::{board::shared_data::SharedBoardData, bundle::Bundle, common::*};
 pub use bitboard::Bitboard;
 pub use hex_board::*;
-pub use road_length::*;
-
-// TODO: Which adjacency maps do we need?
-// (A adjacent to each B)
-// A / B |    Hex    |     Vert     |     Edge
-// ----------------------------------------------
-// Hexes |     ?     |       ?      |      ?
-// Verts |  Robber   | Sett. plcmnt | Sett. plcmnt
-// Edges |     ?     | Road plcmnt  | Road plcmnt
-
-/// Data -- mainly bitmaps -- that doesn't depend on the game state.
-struct SharedBoardData {
-    hex_to_verts: Vec<Bitboard<V>>,
-    vert_to_verts: Vec<Bitboard<V>>,
-    edge_to_verts: Vec<Bitboard<V>>,
-
-    vert_to_edges: Vec<Bitboard<E>>,
-    edge_to_edges: Vec<Bitboard<E>>,
-
-    resources: Vec<Option<Resource>>,
-    rolls: Vec<Option<u8>>,
-
-    roll_resources: Vec<Vec<Bitboard<V>>>, // Vertices that receive a given resource on a given roll
-    generic_harbors: Bitboard<V>,
-    resource_harbors: EnumMap<Resource, Bitboard<V>>,
-    hex_board: HexBoard,
-} // TODO: use arrays? (fixed length is good)
+pub use road_trails::RoadTrailTable;
 
 /// Implements behavior that relates to the Catan hex board.
 pub struct Board {
@@ -104,93 +79,7 @@ impl Board {
     ///
     /// Internally, a [HexBoard] is created and used to populate the bitboards.
     pub fn new(resources: Vec<Option<Resource>>, rolls: Vec<Option<u8>>) -> Self {
-        // TODO: return Result instead
-        let hb = HexBoard::new();
-
-        let mut hex_to_verts: Vec<Bitboard<V>> = vec![Bitboard::zeros(); N_HEXES];
-        let mut roll_resources: Vec<Vec<Bitboard<V>>> =
-            vec![vec![Bitboard::zeros(); Resource::LENGTH]; N_ROLLS];
-
-        // Populate hex-to-vert maps and roll-resource maps
-        for (i, hex) in hb.hexes.iter().enumerate() {
-            let adj = hb.vert_bitboard(&hex.vertices());
-            hex_to_verts[i] = adj;
-
-            if let Some(resource) = resources[i] {
-                let roll = rolls[i].expect("hexes with a resource should also have a roll");
-                roll_resources[(roll - 2) as usize][resource as usize] |= adj;
-            }
-        }
-
-        let mut vert_to_verts: Vec<Bitboard<V>> = vec![Bitboard::zeros(); N_VERTICES];
-        let mut vert_to_edges: Vec<Bitboard<E>> = vec![Bitboard::zeros(); N_VERTICES];
-
-        // Populate vert-to-* maps
-        for (vert, &i) in hb.vertex_ids.iter() {
-            vert_to_edges[i] = hb.edge_bitboard(&vert.edges());
-            vert_to_verts[i] = hb.vert_bitboard(&vert.neighbors());
-            vert_to_verts[i].add(i); // Include self
-        }
-
-        let mut edge_to_verts: Vec<Bitboard<V>> = vec![Bitboard::zeros(); N_EDGES];
-        let mut edge_to_edges: Vec<Bitboard<E>> = vec![Bitboard::zeros(); N_EDGES];
-
-        // Populate edge-to-* maps
-        for (edge, &i) in hb.edge_ids.iter() {
-            edge_to_verts[i] = hb.vert_bitboard(&edge.vertices());
-            edge_to_edges[i] = hb.edge_bitboard(&edge.neighbors());
-            edge_to_edges[i].add(i); // Include self
-        }
-
-        // Populate harbor maps
-        // TODO: make customizable
-        let resource_harbors = enum_map! {
-            Brick => Edge(-2, 1, W),
-            Grain => Edge(1, -2, NE),
-            Lumber => Edge(-1, -1, W),
-            Ore => Edge(2, -1, NE),
-            Wool => Edge(1, 2, NW)
-        }
-        .map(|_, edge| {
-            let id = hb
-                .edge_ids
-                .get(&edge)
-                .expect("harbor edges should be valid");
-            edge_to_verts[*id]
-        });
-
-        let mut generic_harbors = Bitboard::zeros();
-
-        for edge in [
-            Edge(0, -2, NW),
-            Edge(3, 0, W),
-            Edge(-1, 3, NW),
-            Edge(-3, 3, NE),
-        ] {
-            let id = hb
-                .edge_ids
-                .get(&edge)
-                .expect("harbor edges should be valid");
-            let ends = edge_to_verts[*id];
-            generic_harbors |= ends;
-        }
-
-        let shared_data = SharedBoardData {
-            hex_to_verts,
-            vert_to_verts,
-            edge_to_verts,
-
-            vert_to_edges,
-            edge_to_edges,
-
-            resources,
-            rolls,
-
-            roll_resources,
-            generic_harbors,
-            resource_harbors,
-            hex_board: hb,
-        };
+        let shared_data = SharedBoardData::new(resources, rolls);
 
         let center_hex_id = shared_data.hex_board.hex_ids[&Hex(0, 0)];
 
@@ -206,7 +95,6 @@ impl Board {
             robber: center_hex_id,
             shared_data: Arc::new(shared_data),
             longest_roads: EnumMap::default(),
-            // lrs:
         }
     }
 
@@ -256,8 +144,6 @@ impl Board {
         }
     }
 
-    // fn longest_road(&self, player: Player) -> u8 {}
-
     // Gameplay
 
     pub fn available_settlements(&self, player: Player) -> Bitboard<V> {
@@ -297,10 +183,10 @@ impl Board {
         self.player_settlement_slots[player] |= self.shared_data.edge_to_verts[edge_id];
         // Allow adjacent roads
         self.player_road_slots[player] |= self.shared_data.edge_to_edges[edge_id];
-
-        longest(self, player, false);
-        // TODO: longest road
-        // idea: keep track of the longest path as just a number
+        self.longest_roads[player] = self
+            .shared_data
+            .road_trails
+            .longest_trail_lookup(self.roads(player));
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
@@ -381,7 +267,7 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use enum_map::enum_map;
+    use enum_map::{enum_map, Enum};
 
     // Helpers
 

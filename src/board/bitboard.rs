@@ -50,6 +50,26 @@ impl<T: BitboardInt> Bitboard<T> {
     pub fn count_ones(&self) -> u32 {
         self.value.count_ones()
     }
+
+    pub fn values(&self) -> Vec<usize> {
+        let popcount = self.count_ones() as usize;
+        let mut value = self.value;
+        let mut result = Vec::with_capacity((popcount / 4 + 1) * 4);
+        let one = T::one();
+        while !value.is_zero() {
+            result.push(value.trailing_zeros() as usize);
+            value &= value - one;
+            result.push(value.trailing_zeros() as usize);
+            value &= value - one;
+            result.push(value.trailing_zeros() as usize);
+            value &= value - one;
+            result.push(value.trailing_zeros() as usize);
+            value &= value - one;
+        }
+
+        result.truncate(popcount);
+        result
+    }
 }
 
 impl<T: BitboardInt> From<T> for Bitboard<T> {
@@ -69,7 +89,7 @@ impl<T: BitboardInt> Iterator for Bitboard<T> {
         // Find the first (least significant) set bit...
         let idx = self.value.trailing_zeros();
         // ... then get rid of it
-        self.value &= self.value.saturating_sub(T::one());
+        self.value &= self.value - T::one();
 
         Some(idx as usize)
     }

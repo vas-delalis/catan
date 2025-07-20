@@ -36,6 +36,7 @@ pub enum Phase {
     Trading(),
 }
 
+#[derive(Clone)]
 pub struct State {
     pub phase: Phase,
     pub bank: Bank,
@@ -54,6 +55,7 @@ pub struct State {
     has_rolled: bool,
 }
 
+#[derive(Clone)]
 struct PlayerData {
     resources: Bundle,
 }

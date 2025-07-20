@@ -125,6 +125,20 @@ impl Vertex {
 }
 
 impl Edge {
+    pub fn coords(&self) -> (f64, f64) {
+        let &Edge(q, r, dir) = self;
+        let (dq, dr) = {
+            match dir {
+                NE => (0.5, -0.5),
+                NW => (0.0, -0.5),
+                W => (-0.5, 0.0),
+            }
+        };
+        let q = (q as f64) + dq;
+        let r = (r as f64) + dr;
+        (q, r)
+    }
+
     /// Returns neighboring edges.
     pub fn neighbors(&self) -> [Edge; 4] {
         let &Edge(q, r, dir) = self;

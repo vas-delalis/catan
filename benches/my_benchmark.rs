@@ -12,8 +12,7 @@ impl Agent {
     }
 }
 
-fn play() {
-    let mut state = State::default();
+fn play(mut state: State) {
     let agent = Agent {};
     while !state.is_terminal() {
         let action = agent.get_action(state.observe(state.current_player()));
@@ -27,7 +26,10 @@ fn play() {
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Full game");
     group.throughput(criterion::Throughput::Elements(1));
-    group.bench_function("W/ longest road", |b| b.iter(|| play()));
+
+    let root = State::default();
+
+    group.bench_function("W/ longest road", |b| b.iter(|| play(root.clone())));
     group.finish();
 
     // let mut group = c.benchmark_group("");
