@@ -2,69 +2,90 @@ use std::{
     cmp::max,
     collections::{HashMap, HashSet, VecDeque},
     error::Error,
+    fs::File,
+    hash::BuildHasher,
+    io::{BufReader, BufWriter},
 };
 
 use crate::{board::shared_data::Adjacency, Bitboard, EdgeId};
 use ahash::RandomState;
+use bincode::config::Configuration;
 
-const LOOKUP_TABLE_PATH: &str = "roads.csv";
+const LOOKUP_TABLE_PATH: &str = "roads.bin";
+const BINCODE_CONFIG: Configuration = bincode::config::standard();
+const AHASH_SEEDS: (u64, u64, u64, u64) = (7129002836, 567957864, 9421963134, 7836118570);
+const HASH_MAP_CAPACITY: usize = 38_000_000;
 
 pub struct RoadTrailTable {
-    table: HashMap<u128, u8, RandomState>,
+    map: RoadTrailHashMap,
     adjacency: Adjacency,
+}
+
+type RoadTrailHashMap = HashMap<u128, u8, SeededRandomState>;
+
+/// Overrides `RandomState`'s `Default` trait in order to seed it.
+///
+/// This is required because `bincode` uses the trait to initialize the deserialized `HashMap`.
+struct SeededRandomState(RandomState);
+
+impl Default for SeededRandomState {
+    fn default() -> Self {
+        let (s0, s1, s2, s3) = AHASH_SEEDS;
+        SeededRandomState(RandomState::with_seeds(s0, s1, s2, s3))
+    }
+}
+
+impl BuildHasher for SeededRandomState {
+    type Hasher = ahash::AHasher;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        self.0.build_hasher()
+    }
 }
 
 impl RoadTrailTable {
     pub fn load() -> Self {
-        let mut table: HashMap<u128, u8, RandomState> =
-            HashMap::with_capacity_and_hasher(30_000_000, RandomState::new());
+        let file = File::open(LOOKUP_TABLE_PATH).unwrap();
+        let mut reader = BufReader::new(file);
 
-        let mut reader = csv::Reader::from_path(LOOKUP_TABLE_PATH)
-            .expect(&format!("{} should exist", LOOKUP_TABLE_PATH));
-        let records = reader.records();
-        for r in records {
-            let r = r.unwrap();
-            let graph = u128::from_str_radix(r.get(0).unwrap(), 16).unwrap();
-            let length: u8 = r.get(1).unwrap().parse().unwrap();
-            table.insert(graph, length);
-        }
+        let map: RoadTrailHashMap =
+            bincode::decode_from_reader(&mut reader, BINCODE_CONFIG).unwrap();
+
         RoadTrailTable {
-            table,
+            map,
             adjacency: Adjacency::new(),
         }
     }
 
     pub fn generate_and_save() -> Result<(), Box<dyn Error>> {
-        let mut wtr = csv::Writer::from_path(LOOKUP_TABLE_PATH)?;
+        let mut table: RoadTrailHashMap =
+            HashMap::with_capacity_and_hasher(HASH_MAP_CAPACITY, SeededRandomState::default());
+
         let adjacency = Adjacency::new();
         let graphs = RoadGraphIterator::new(&adjacency);
 
-        let mut count = 0;
         for graph in graphs {
-            let record = (
-                format!("{:x}", graph.value),
-                longest_trail(graph, &adjacency),
-            );
-            wtr.serialize(record)?;
-            count += 1;
-            if count == 10000 {
-                count = 0;
-                wtr.flush()?;
-            }
+            table.insert(graph.value, slow_longest_trail(graph, &adjacency));
         }
+
+        table.shrink_to_fit();
+
+        let file = File::create(LOOKUP_TABLE_PATH)?;
+        let mut writer = BufWriter::new(file);
+        bincode::encode_into_std_write(table, &mut writer, BINCODE_CONFIG)?;
 
         Ok(())
     }
 
     fn lookup(&self, graph: u128) -> u8 {
         *self
-            .table
+            .map
             .get(&graph)
             .expect("lookup table should contain road graph")
     }
 
     /// Returns the longest trail for a road graph by querying the lookup table.
-    pub fn longest_trail_lookup(&self, roads: Bitboard<u128>) -> u8 {
+    pub fn longest_trail(&self, roads: Bitboard<u128>) -> u8 {
         // Find connected components (up to two)
         // TODO: Enemy settlements block the trail, creating more components
         let mut visited: Bitboard<u128> = Bitboard::zeros();
@@ -93,7 +114,7 @@ impl RoadTrailTable {
 ///
 /// This algorithm is too slow to use at runtime.
 /// Instead, we use it to build a lookup table by precomputing the longest trail of every graph.
-pub fn longest_trail(roads: Bitboard<u128>, adjacency: &Adjacency) -> u8 {
+pub fn slow_longest_trail(roads: Bitboard<u128>, adjacency: &Adjacency) -> u8 {
     let road_count = roads.count_ones() as usize;
 
     let verts = roads.fold(Bitboard::zeros(), |bb, eid| {

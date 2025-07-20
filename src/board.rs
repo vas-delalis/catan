@@ -186,7 +186,7 @@ impl Board {
         self.longest_roads[player] = self
             .shared_data
             .road_trails
-            .longest_trail_lookup(self.roads(player));
+            .longest_trail(self.roads(player));
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
