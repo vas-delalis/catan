@@ -6,12 +6,23 @@
 // Verts |  Robber   | Sett. plcmnt | Sett. plcmnt
 // Edges |     ?     | Road plcmnt  | Road plcmnt
 
+use std::sync::{LazyLock, OnceLock};
+
 use enum_map::{enum_map, Enum, EnumMap};
 
 use crate::{
     board::hex_board::*, board::road_trails::RoadTrailTable, common::*, Bitboard, Edge, HexBoard,
     E, V,
 };
+
+static BOARD_DATA: OnceLock<SharedBoardData> = OnceLock::new();
+// static HEX_BOARD: OnceLock<HexBoard> = OnceLock::new();
+pub static ADJACENCY: LazyLock<Adjacency> = LazyLock::new(|| Adjacency::new());
+// static HEX_DATA: OnceLock<HexData> = OnceLock::new();
+
+pub fn init_board_data(resources: Vec<Option<Resource>>, rolls: Vec<Option<u8>>) {
+    BOARD_DATA.get_or_init(|| SharedBoardData::new(resources, rolls));
+}
 
 pub struct Adjacency {
     pub hex_to_verts: Vec<Bitboard<V>>,
@@ -20,6 +31,11 @@ pub struct Adjacency {
 
     pub vert_to_edges: Vec<Bitboard<E>>,
     pub edge_to_edges: Vec<Bitboard<E>>,
+}
+
+pub struct HexData {
+    pub resources: Vec<Option<Resource>>,
+    pub rolls: Vec<Option<u8>>,
 }
 
 impl Adjacency {

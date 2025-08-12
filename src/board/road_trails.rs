@@ -7,7 +7,7 @@ use std::{
     io::{BufReader, BufWriter},
 };
 
-use crate::{board::shared_data::Adjacency, Bitboard, EdgeId};
+use crate::{board::shared_data::ADJACENCY, Bitboard, EdgeId};
 use ahash::RandomState;
 use bincode::config::Configuration;
 
@@ -18,7 +18,6 @@ const HASH_MAP_CAPACITY: usize = 38_000_000;
 
 pub struct RoadTrailTable {
     map: RoadTrailHashMap,
-    adjacency: Adjacency,
 }
 
 type RoadTrailHashMap = HashMap<u128, u8, SeededRandomState>;
@@ -52,21 +51,17 @@ impl RoadTrailTable {
         let map: RoadTrailHashMap =
             bincode::decode_from_reader(&mut reader, BINCODE_CONFIG).unwrap();
 
-        RoadTrailTable {
-            map,
-            adjacency: Adjacency::new(),
-        }
+        RoadTrailTable { map }
     }
 
     pub fn generate_and_save() -> Result<(), Box<dyn Error>> {
         let mut table: RoadTrailHashMap =
             HashMap::with_capacity_and_hasher(HASH_MAP_CAPACITY, SeededRandomState::default());
 
-        let adjacency = Adjacency::new();
-        let graphs = RoadGraphIterator::new(&adjacency);
+        let graphs = RoadGraphIterator::new();
 
         for graph in graphs {
-            table.insert(graph.value, slow_longest_trail(graph, &adjacency));
+            table.insert(graph.value, slow_longest_trail(graph));
         }
 
         table.shrink_to_fit();
@@ -96,7 +91,7 @@ impl RoadTrailTable {
 
         while let Some(edge) = queue.pop_front() {
             visited.add(edge);
-            for neighbor in self.adjacency.edge_to_edges[edge] & roads & !visited {
+            for neighbor in ADJACENCY.edge_to_edges[edge] & roads & !visited {
                 queue.push_back(neighbor);
             }
         }
@@ -115,11 +110,11 @@ impl RoadTrailTable {
 ///
 /// This algorithm is too slow to use at runtime.
 /// Instead, we use it to build a lookup table by precomputing the longest trail of every graph.
-pub fn slow_longest_trail(roads: Bitboard<u128>, adjacency: &Adjacency) -> u8 {
+pub fn slow_longest_trail(roads: Bitboard<u128>) -> u8 {
     let road_count = roads.count_ones() as usize;
 
     let verts = roads.fold(Bitboard::zeros(), |bb, eid| {
-        adjacency.edge_to_verts[eid] | bb
+        ADJACENCY.edge_to_verts[eid] | bb
     });
     let n = verts.count_ones() as usize;
 
@@ -137,11 +132,11 @@ pub fn slow_longest_trail(roads: Bitboard<u128>, adjacency: &Adjacency) -> u8 {
         let (prev, curr) = table.split_at_mut(length);
         for v in verts {
             let vi = vert_indices[v];
-            let connections = adjacency.vert_to_edges[v] & roads;
+            let connections = ADJACENCY.vert_to_edges[v] & roads;
             let mask = !Bitboard::single(v);
             for c in connections {
                 // for &(c, w) in &vert_neighbors[vi] {
-                let w = (adjacency.edge_to_verts[c] & mask).next().unwrap();
+                let w = (ADJACENCY.edge_to_verts[c] & mask).next().unwrap();
                 let wi = vert_indices[w];
                 // for path in &old_paths[wi] {
                 for path in &prev[length - 1][wi] {
@@ -179,14 +174,13 @@ impl RoadBoard {
 }
 
 /// Iterates through every possible road graph.
-struct RoadGraphIterator<'a> {
+struct RoadGraphIterator {
     unique: HashSet<u128>,
     queue: VecDeque<RoadBoard>,
-    adjacency: &'a Adjacency,
 }
 
-impl<'a> RoadGraphIterator<'a> {
-    pub fn new(adjacency: &'_ Adjacency) -> RoadGraphIterator<'_> {
+impl RoadGraphIterator {
+    pub fn new() -> RoadGraphIterator {
         let unique: HashSet<u128> = HashSet::new();
         let mut queue: VecDeque<RoadBoard> = VecDeque::with_capacity(1 << 20);
 
@@ -200,15 +194,11 @@ impl<'a> RoadGraphIterator<'a> {
 
         queue.push_front(root);
 
-        RoadGraphIterator {
-            unique,
-            queue,
-            adjacency,
-        }
+        RoadGraphIterator { unique, queue }
     }
 }
 
-impl Iterator for RoadGraphIterator<'_> {
+impl Iterator for RoadGraphIterator {
     type Item = Bitboard<u128>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -216,7 +206,7 @@ impl Iterator for RoadGraphIterator<'_> {
             if b.roads.count_ones() < 15 {
                 for next_edge in b.road_slots {
                     let mut next_b = b.clone();
-                    next_b.add_road(next_edge, self.adjacency.edge_to_edges[next_edge]);
+                    next_b.add_road(next_edge, ADJACENCY.edge_to_edges[next_edge]);
                     if !self.unique.insert(next_b.roads.value) {
                         continue;
                     }
