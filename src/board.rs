@@ -2,7 +2,6 @@ mod bitboard;
 mod hex_board;
 mod road_trails;
 mod shared_data;
-mod transformations;
 
 use enum_map::EnumMap;
 use std::{
