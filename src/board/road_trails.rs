@@ -228,3 +228,21 @@ impl Iterator for RoadGraphIterator<'_> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bb(hex: &str) -> Bitboard<u128> {
+        Bitboard::from(u128::from_str_radix(hex, 16).unwrap())
+    }
+
+    #[test]
+    fn load_table() {
+        let table = RoadTrailTable::load();
+
+        assert_eq!(table.longest_trail(bb("7c1e601c00200000")), 10);
+        assert_eq!(table.longest_trail(bb("3609b801880090000")), 11);
+        assert_eq!(table.longest_trail(bb("1000000")), 1);
+    }
+}
