@@ -45,7 +45,8 @@ impl BuildHasher for SeededRandomState {
 
 impl RoadTrailTable {
     pub fn load() -> Self {
-        let file = File::open(LOOKUP_TABLE_PATH).unwrap();
+        let file =
+            File::open(LOOKUP_TABLE_PATH).expect(&format!("{} should exist", LOOKUP_TABLE_PATH));
         let mut reader = BufReader::new(file);
 
         let map: RoadTrailHashMap =
