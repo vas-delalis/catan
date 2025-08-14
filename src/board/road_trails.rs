@@ -74,10 +74,10 @@ impl RoadTrailTable {
     }
 
     fn lookup(&self, graph: u128) -> u8 {
-        *self
-            .map
-            .get(&graph)
-            .expect("lookup table should contain road graph")
+        *self.map.get(&graph).expect(&format!(
+            "lookup table should contain road graph: {:#x}",
+            graph
+        ))
     }
 
     /// Returns the longest trail for a road graph by querying the lookup table.
