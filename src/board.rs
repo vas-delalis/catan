@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{board::shared_data::SharedBoardData, bundle::Bundle, common::*};
+use crate::{board::shared_data::*, bundle::Bundle, common::*};
 pub use bitboard::Bitboard;
 pub use hex_board::*;
 pub use road_trails::RoadTrailTable;
@@ -90,7 +90,7 @@ impl Board {
             settlement_slots: Bitboard::ones(),
             road_slots: Bitboard::ones(),
             cities: Bitboard::zeros(),
-            robber_verts: shared_data.hex_to_verts[center_hex_id],
+            robber_verts: ADJACENCY.hex_to_verts[center_hex_id],
             robber: center_hex_id,
             shared_data: Arc::new(shared_data),
             longest_roads: EnumMap::default(),
@@ -124,7 +124,7 @@ impl Board {
     }
 
     pub fn players_on_hex(&self, hex_id: HexId) -> Vec<Player> {
-        let verts = self.shared_data.hex_to_verts[hex_id];
+        let verts = ADJACENCY.hex_to_verts[hex_id];
         PLAYERS
             .into_iter()
             .filter(|&p| (self.player_buildings[p] & verts) > Bitboard::zeros())
@@ -169,9 +169,9 @@ impl Board {
         self.player_buildings[player].add(vertex_id);
         // Mark vertex and neighbors as occupied
         // (Currently, same_to_same[i] includes i itself, not just its neighbors.)
-        self.settlement_slots &= !self.shared_data.vert_to_verts[vertex_id];
+        self.settlement_slots &= !ADJACENCY.vert_to_verts[vertex_id];
         // Allow adjacent roads
-        self.player_road_slots[player] |= self.shared_data.vert_to_edges[vertex_id];
+        self.player_road_slots[player] |= ADJACENCY.vert_to_edges[vertex_id];
     }
 
     pub fn add_road(&mut self, player: Player, edge_id: EdgeId) {
@@ -179,13 +179,10 @@ impl Board {
         self.player_roads[player].add(edge_id);
         self.road_slots.remove(edge_id);
         // Allow adjacent settlements
-        self.player_settlement_slots[player] |= self.shared_data.edge_to_verts[edge_id];
+        self.player_settlement_slots[player] |= ADJACENCY.edge_to_verts[edge_id];
         // Allow adjacent roads
-        self.player_road_slots[player] |= self.shared_data.edge_to_edges[edge_id];
-        self.longest_roads[player] = self
-            .shared_data
-            .road_trails
-            .longest_trail(self.roads(player));
+        self.player_road_slots[player] |= ADJACENCY.edge_to_edges[edge_id];
+        self.longest_roads[player] = ROAD_TRAILS.longest_trail(self.roads(player));
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
@@ -198,7 +195,7 @@ impl Board {
 
     pub fn move_robber(&mut self, hex_id: HexId) {
         self.robber = hex_id;
-        self.robber_verts = self.shared_data.hex_to_verts[hex_id];
+        self.robber_verts = ADJACENCY.hex_to_verts[hex_id];
     }
 
     /// Returns the amount of each resource needed to trade with the bank (maritime trade).
