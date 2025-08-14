@@ -808,16 +808,20 @@ mod tests {
 
     #[test]
     fn skip_road_building_if_no_road_slots_available() {
-        let mut s = State::default();
+        let mut s = State::new(Board::default());
         let p = s.current_player();
-        // Build all available roads
-        while s.board.available_roads(p).count_ones() > 0 {
-            s.board
-                .add_road(p, s.board.available_roads(p).next().unwrap());
-        }
+        let p2 = p.next();
+
+        // Surround p settlement with p2 roads
+        s.board
+            .add_settlement(p, s.board.vertex_id(Vertex(0, 0, S)));
+        s.board.add_road(p2, s.board.edge_id(Edge(-1, 1, NE)));
+        s.board.add_road(p2, s.board.edge_id(Edge(0, 1, W)));
+        s.board.add_road(p2, s.board.edge_id(Edge(0, 1, NW)));
 
         s.activate_dev_card(DevCard::RoadBuilding);
 
+        assert_eq!(s.board.available_roads(p), Bitboard::zeros());
         assert!(matches!(s.phase, Phase::Normal));
     }
 

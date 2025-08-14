@@ -62,7 +62,18 @@ pub enum Player {
     White,
 }
 
-pub const PLAYERS: [Player; 4] = [Player::Blue, Player::Orange, Player::Red, Player::White];
+impl Player {
+    pub fn next(&self) -> Player {
+        match *self {
+            Blue => Orange,
+            Orange => Red,
+            Red => White,
+            White => Blue,
+        }
+    }
+}
+
+pub const PLAYERS: [Player; 4] = [Blue, Orange, Red, White];
 
 #[derive(Debug, Enum, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DevCard {
