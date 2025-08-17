@@ -10,6 +10,7 @@ use std::{
 use crate::{board::shared_data::ADJACENCY, Bitboard, EdgeId};
 use ahash::RandomState;
 use bincode::config::Configuration;
+use num::Zero;
 
 const LOOKUP_TABLE_PATH: &str = "roads.bin";
 const BINCODE_CONFIG: Configuration = bincode::config::standard();
@@ -81,28 +82,35 @@ impl RoadTrailTable {
     }
 
     /// Returns the longest trail for a road graph by querying the lookup table.
-    pub fn longest_trail(&self, roads: Bitboard<u128>) -> u8 {
-        // Find connected components (up to two)
-        // TODO: Enemy settlements block the trail, creating more components
+    pub fn longest_trail(&self, roads: Bitboard<u128>, enemy_buildings: Bitboard<u64>) -> u8 {
+        // 1. Starting from an arbitrary unvisited vertex, do a BFS.
+        // 2. Look up the longest trail for the resulting connected component.
+        // 3. If there are still unvisited vertices, return to 1.
+        // 4. Return the longest longest trail.
+        let mut longest = 0u8;
         let mut visited: Bitboard<u128> = Bitboard::zeros();
         let mut queue: VecDeque<EdgeId> = VecDeque::new();
-        let root = roads.value.trailing_zeros() as EdgeId;
-        queue.push_back(root);
 
-        while let Some(edge) = queue.pop_front() {
-            visited.add(edge);
-            for neighbor in ADJACENCY.edge_to_edges[edge] & roads & !visited {
-                queue.push_back(neighbor);
+        while visited != roads {
+            let mut component = Bitboard::<u128>::zeros();
+            let root: EdgeId = (roads & !visited).value.trailing_zeros() as EdgeId;
+            queue.push_back(root);
+
+            while let Some(edge) = queue.pop_front() {
+                visited.add(edge);
+                component.add(edge);
+                for neighbor in ADJACENCY.edge_to_edges[edge] & roads & !visited {
+                    // Skip neighboring road if connecting vertex has enemy building
+                    let v = ADJACENCY.edge_to_verts[edge] & ADJACENCY.edge_to_verts[neighbor];
+                    if (v & enemy_buildings).value.is_zero() {
+                        queue.push_back(neighbor);
+                    }
+                }
             }
-        }
 
-        // Compute longest trail of each component; Return longest of the two
-        let component1_length = self.lookup(visited.value);
-        if visited != roads {
-            let component2_length = self.lookup((!visited & roads).value);
-            return max(component1_length, component2_length);
+            longest = max(self.lookup(component.value), longest)
         }
-        component1_length
+        longest
     }
 }
 
@@ -221,18 +229,40 @@ impl Iterator for RoadGraphIterator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    fn bb(hex: &str) -> Bitboard<u128> {
-        Bitboard::from(u128::from_str_radix(hex, 16).unwrap())
-    }
+    use crate::{board::shared_data::ROAD_TRAILS, *};
 
     #[test]
     fn load_table() {
-        let table = RoadTrailTable::load();
+        ROAD_TRAILS.lookup(0);
+    }
 
-        assert_eq!(table.longest_trail(bb("7c1e601c00200000")), 10);
-        assert_eq!(table.longest_trail(bb("3609b801880090000")), 11);
-        assert_eq!(table.longest_trail(bb("1000000")), 1);
+    #[test]
+    fn lookup() {
+        let data = vec![
+            ("7c1e601c00200000", 10),
+            ("3609b801880090000", 11),
+            ("1000000", 1),
+        ];
+        for (hex, length) in data {
+            let roads: Bitboard<u128> = Bitboard::from_hex(hex);
+            assert_eq!(ROAD_TRAILS.lookup(roads.value), length);
+        }
+    }
+
+    #[test]
+    fn enemy_building_blocks_trail() {
+        let mut b = Board::default();
+        let roads: Bitboard<u128> = Bitboard::from_hex("10019801e00400000");
+        for road in roads {
+            b.add_road(Blue, road);
+        }
+
+        let setts: Bitboard<u64> = Bitboard::from_hex("1200400");
+        for sett in setts {
+            b.add_settlement(Orange, sett);
+        }
+
+        let buildings = b.buildings(Orange);
+        assert_eq!(ROAD_TRAILS.longest_trail(b.roads(Blue), buildings), 3);
     }
 }

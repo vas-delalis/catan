@@ -1,17 +1,17 @@
 use num::{PrimInt, ToPrimitive};
-use std::fmt::Debug;
+use std::fmt::{Debug, LowerHex};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not};
 
 /// One of `u64` or `u128`.
 pub trait BitboardInt:
-    PrimInt + BitAndAssign + BitOrAssign + ToPrimitive + Debug + Default
+    PrimInt + BitAndAssign + BitOrAssign + ToPrimitive + Debug + Default + LowerHex
 {
 }
 
 impl BitboardInt for u64 {}
 impl BitboardInt for u128 {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Bitboard<T: BitboardInt> {
     pub value: T,
 }
@@ -33,6 +33,13 @@ impl<T: BitboardInt> Bitboard<T> {
         let mut board = Bitboard::default();
         board.add(id);
         board
+    }
+
+    pub fn from_hex(hex: &str) -> Self {
+        T::from_str_radix(hex, 16)
+            .ok()
+            .expect("hex string should be valid")
+            .into()
     }
 
     pub fn contains(&self, id: usize) -> bool {
@@ -130,5 +137,11 @@ impl<T: BitboardInt> Not for Bitboard<T> {
 
     fn not(self) -> Self::Output {
         (!self.value).into()
+    }
+}
+
+impl<T: BitboardInt> Debug for Bitboard<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Bitboard {:x}", self.value)
     }
 }

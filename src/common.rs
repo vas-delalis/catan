@@ -71,6 +71,15 @@ impl Player {
             White => Blue,
         }
     }
+
+    pub fn enemies(&self) -> [Player; 3] {
+        match *self {
+            Blue => [Orange, Red, White],
+            Orange => [Blue, Red, White],
+            Red => [Blue, Orange, White],
+            White => [Blue, Orange, Red],
+        }
+    }
 }
 
 pub const PLAYERS: [Player; 4] = [Blue, Orange, Red, White];

@@ -153,6 +153,10 @@ impl Board {
         (self.road_slots & self.player_road_slots[player]).into()
     }
 
+    pub fn buildings(&self, player: Player) -> Bitboard<V> {
+        self.player_buildings[player]
+    }
+
     pub fn settlements(&self, player: Player) -> Bitboard<V> {
         self.player_buildings[player] & !self.cities
     }
@@ -165,6 +169,16 @@ impl Board {
         self.player_roads[player]
     }
 
+    pub fn longest_road(&self, player: Player) -> u8 {
+        let enemy_buildings = player
+            .enemies()
+            .iter()
+            .map(|&p| self.player_buildings[p])
+            .reduce(|acc, e| acc | e)
+            .unwrap();
+        ROAD_TRAILS.longest_trail(self.roads(player), enemy_buildings)
+    }
+
     pub fn add_settlement(&mut self, player: Player, vertex_id: VertexId) {
         self.player_buildings[player].add(vertex_id);
         // Mark vertex and neighbors as occupied
@@ -172,6 +186,17 @@ impl Board {
         self.settlement_slots &= !ADJACENCY.vert_to_verts[vertex_id];
         // Allow adjacent roads
         self.player_road_slots[player] |= ADJACENCY.vert_to_edges[vertex_id];
+
+        // Check for split roads
+        for enemy in player.enemies() {
+            if (ADJACENCY.vert_to_edges[vertex_id] & self.player_roads[enemy]).count_ones() > 1 {
+                // Neighboring roads > 1 means
+                // `player` just split 'enemy`'s road, which means
+                // length must be recalculated
+                self.longest_roads[enemy] = self.longest_road(enemy);
+                break; // This can only happen to one enemy at a time
+            }
+        }
     }
 
     pub fn add_road(&mut self, player: Player, edge_id: EdgeId) {
@@ -182,7 +207,7 @@ impl Board {
         self.player_settlement_slots[player] |= ADJACENCY.edge_to_verts[edge_id];
         // Allow adjacent roads
         self.player_road_slots[player] |= ADJACENCY.edge_to_edges[edge_id];
-        self.longest_roads[player] = ROAD_TRAILS.longest_trail(self.roads(player));
+        self.longest_roads[player] = self.longest_road(player);
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
@@ -281,6 +306,20 @@ mod tests {
 
     fn to_bundles(map: EnumMap<Player, [u8; Resource::LENGTH]>) -> EnumMap<Player, Bundle> {
         map.map(|_, arr| Bundle::from(arr.as_slice()))
+    }
+
+    fn add_settlements_from_hex(board: &mut Board, player: Player, hex: &str) {
+        let verts: Bitboard<V> = Bitboard::from_hex(hex);
+        for v in verts {
+            board.add_settlement(player, v);
+        }
+    }
+
+    fn add_roads_from_hex(board: &mut Board, player: Player, hex: &str) {
+        let edges: Bitboard<E> = Bitboard::from_hex(hex);
+        for e in edges {
+            board.add_road(player, e);
+        }
     }
 
     /// *Illustration A* in the [Catan manual]
@@ -515,5 +554,15 @@ mod tests {
         let players = b.players_on_hex(hex_id);
 
         assert_eq!(players, vec![Blue, Red]);
+    }
+
+    #[test]
+    fn enemy_settlement_splits_road() {
+        let mut b = Board::default();
+        add_roads_from_hex(&mut b, Blue, "18001800000000");
+        assert_eq!(b.longest_roads[Blue], 4, "longest road before split");
+
+        add_settlements_from_hex(&mut b, Orange, "400000");
+        assert_eq!(b.longest_roads[Blue], 2, "longest road after split");
     }
 }
