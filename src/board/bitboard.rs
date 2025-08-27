@@ -25,6 +25,10 @@ impl<T: BitboardInt> Bitboard<T> {
         Bitboard::default()
     }
 
+    pub fn is_zeros(&self) -> bool {
+        self.value.is_zero()
+    }
+
     pub fn ones() -> Self {
         !Bitboard::default()
     }

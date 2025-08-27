@@ -127,7 +127,7 @@ impl Board {
         let verts = ADJACENCY.hex_to_verts[hex_id];
         PLAYERS
             .into_iter()
-            .filter(|&p| (self.player_buildings[p] & verts) > Bitboard::zeros())
+            .filter(|&p| !(self.player_buildings[p] & verts).is_zeros())
             .collect()
     }
 
@@ -196,7 +196,7 @@ impl Board {
             for e in spokes & !enemy_roads {
                 // If a roadless spoke just got completely disconnected from other roads,
                 // disallow building on it
-                if (ADJACENCY.edge_to_edges[e] & !spokes & enemy_roads) == Bitboard::zeros() {
+                if (ADJACENCY.edge_to_edges[e] & !spokes & enemy_roads).is_zeros() {
                     self.player_road_slots[enemy].remove(e);
                 }
             }
@@ -254,14 +254,14 @@ impl Board {
         // Resource-specific harbors reduce it to 2:1 for that resource.
         let buildings = self.player_buildings[player];
         let mut ratios = Bundle::splat(
-            if buildings & self.shared_data.generic_harbors > Bitboard::zeros() {
-                3
-            } else {
+            if (buildings & self.shared_data.generic_harbors).is_zeros() {
                 4
+            } else {
+                3
             },
         );
         for (res, harbors) in self.shared_data.resource_harbors {
-            if buildings & harbors > Bitboard::zeros() {
+            if !(buildings & harbors).is_zeros() {
                 ratios[res] = 2;
             }
         }

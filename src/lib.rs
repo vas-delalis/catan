@@ -821,7 +821,7 @@ mod tests {
 
         s.activate_dev_card(DevCard::RoadBuilding);
 
-        assert_eq!(s.board.available_roads(p), Bitboard::zeros());
+        assert!(s.board.available_roads(p).is_zeros());
         assert!(matches!(s.phase, Phase::Normal));
     }
 
