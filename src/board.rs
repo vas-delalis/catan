@@ -185,11 +185,23 @@ impl Board {
         // (Currently, same_to_same[i] includes i itself, not just its neighbors.)
         self.settlement_slots &= !ADJACENCY.vert_to_verts[vertex_id];
         // Allow adjacent roads
-        self.player_road_slots[player] |= ADJACENCY.vert_to_edges[vertex_id];
+        let spokes = ADJACENCY.vert_to_edges[vertex_id];
+        self.player_road_slots[player] |= spokes;
 
         // Check for split roads
         for enemy in player.enemies() {
-            if (ADJACENCY.vert_to_edges[vertex_id] & self.player_roads[enemy]).count_ones() > 1 {
+            let enemy_roads = self.player_roads[enemy];
+            let enemy_spokes = spokes & enemy_roads;
+
+            for e in spokes & !enemy_roads {
+                // If a roadless spoke just got completely disconnected from other roads,
+                // disallow building on it
+                if (ADJACENCY.edge_to_edges[e] & !spokes & enemy_roads) == Bitboard::zeros() {
+                    self.player_road_slots[enemy].remove(e);
+                }
+            }
+
+            if enemy_spokes.count_ones() >= 2 {
                 // Neighboring roads > 1 means
                 // `player` just split 'enemy`'s road, which means
                 // length must be recalculated
@@ -203,10 +215,23 @@ impl Board {
         // Mark edge as occupied
         self.player_roads[player].add(edge_id);
         self.road_slots.remove(edge_id);
+
         // Allow adjacent settlements
-        self.player_settlement_slots[player] |= ADJACENCY.edge_to_verts[edge_id];
+        let verts = ADJACENCY.edge_to_verts[edge_id];
+        self.player_settlement_slots[player] |= verts;
+
         // Allow adjacent roads
-        self.player_road_slots[player] |= ADJACENCY.edge_to_edges[edge_id];
+        let edges = ADJACENCY.edge_to_edges[edge_id];
+        self.player_road_slots[player] |= edges;
+        // Disallow roads blocked by enemy settlements
+        for enemy in player.enemies() {
+            let mut enemy_buildings = verts & self.player_buildings[enemy];
+            if enemy_buildings.count_ones() == 1 {
+                self.player_road_slots[player] &=
+                    !ADJACENCY.vert_to_edges[enemy_buildings.next().unwrap()];
+                break;
+            }
+        }
         self.longest_roads[player] = self.longest_road(player);
     }
 
@@ -564,5 +589,61 @@ mod tests {
 
         add_settlements_from_hex(&mut b, Orange, "400000");
         assert_eq!(b.longest_roads[Blue], 2, "longest road after split");
+    }
+
+    #[test]
+    fn old_enemy_settlement_prevents_new_road() {
+        let mut b = Board::default();
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+
+        assert!(!b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NE))));
+    }
+
+    #[test]
+    fn new_enemy_settlement_prevents_new_road() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+
+        assert!(!b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NE))));
+    }
+
+    #[test]
+    fn old_enemy_settlement_allows_road_that_goes_around() {
+        let mut b = Board::default();
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+    }
+
+    #[test]
+    fn new_enemy_settlement_allows_road_that_goes_around() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+    }
+
+    #[test]
+    fn enemy_settlement_prevents_road_branch() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+
+        assert!(!b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
     }
 }
