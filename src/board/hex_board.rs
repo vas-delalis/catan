@@ -175,7 +175,7 @@ impl Edge {
     }
 }
 
-/// A high-level representation of the Catan board. Used to generate the much more efficient [Board].
+/// A high-level representation of the Catan board. Used to generate the much more efficient [crate::Board].
 #[derive(Debug)]
 pub struct HexBoard {
     pub hexes: Vec<Hex>,

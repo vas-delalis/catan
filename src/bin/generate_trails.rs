@@ -1,9 +1,9 @@
 use std::{error::Error, process};
 
-use catan::*;
+use catan::RoadTrailTableLoader;
 
 fn run() -> Result<(), Box<dyn Error>> {
-    RoadTrailTable::generate_and_save()?;
+    RoadTrailTableLoader::generate_and_save()?;
 
     Ok(())
 }

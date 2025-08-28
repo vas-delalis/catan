@@ -12,7 +12,7 @@ use std::{
 use crate::{board::shared_data::*, bundle::Bundle, common::*};
 pub use bitboard::Bitboard;
 pub use hex_board::*;
-pub use road_trails::RoadTrailTable;
+pub use road_trails::{RoadTrailTable, RoadTrailTableLoader};
 
 /// Implements behavior that relates to the Catan hex board.
 pub struct Board {

@@ -1,35 +1,44 @@
+//! # Road trail table
+//!
+//! This module contains `RoadTrailTable`, which can find the longest trail in a given road network.
+//!
+//! The table can be loaded or generated using `RoadTableData`.
+
 use std::{
     cmp::max,
     collections::{HashMap, HashSet, VecDeque},
     error::Error,
     fs::File,
     hash::BuildHasher,
-    io::{BufReader, BufWriter},
+    io::{BufWriter, Read},
 };
 
 use crate::{board::shared_data::ADJACENCY, Bitboard, EdgeId};
 use ahash::RandomState;
-use bincode::config::Configuration;
 use num::Zero;
+use rkyv::{api::high::to_bytes_in, ser::writer::IoWriter, Archive, Deserialize, Serialize};
+use rkyv_util::owned::OwnedArchive;
 
 const LOOKUP_TABLE_PATH: &str = "roads.bin";
-const BINCODE_CONFIG: Configuration = bincode::config::standard();
 const AHASH_SEEDS: (u64, u64, u64, u64) = (7129002836, 567957864, 9421963134, 7836118570);
 const HASH_MAP_CAPACITY: usize = 38_000_000;
 
-pub struct RoadTrailTable {
+/// Allows loading or generating-and-saving the `RoadTrailTable`.
+///
+/// This is actually the original (unarchived) version of `RoadTrailTable`.
+#[derive(Archive, Serialize, Deserialize)]
+pub struct RoadTrailTableLoader {
     map: RoadTrailHashMap,
 }
 
 type RoadTrailHashMap = HashMap<u128, u8, SeededRandomState>;
+pub type RoadTrailTable = OwnedArchive<RoadTrailTableLoader, Vec<u8>>;
 
-/// Overrides `RandomState`'s `Default` trait in order to seed it.
-///
-/// This is required because `bincode` uses the trait to initialize the deserialized `HashMap`.
+/// Makes `ahash` deterministic.
 struct SeededRandomState(RandomState);
 
-impl Default for SeededRandomState {
-    fn default() -> Self {
+impl SeededRandomState {
+    pub fn new() -> Self {
         let (s0, s1, s2, s3) = AHASH_SEEDS;
         SeededRandomState(RandomState::with_seeds(s0, s1, s2, s3))
     }
@@ -43,24 +52,21 @@ impl BuildHasher for SeededRandomState {
     }
 }
 
-impl RoadTrailTable {
-    pub fn load() -> Self {
-        let file =
+impl RoadTrailTableLoader {
+    pub fn load() -> OwnedArchive<RoadTrailTableLoader, Vec<u8>> {
+        let mut file =
             File::open(LOOKUP_TABLE_PATH).expect(&format!("{} should exist", LOOKUP_TABLE_PATH));
-        let mut reader = BufReader::new(file);
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).unwrap();
 
-        let map: RoadTrailHashMap =
-            bincode::decode_from_reader(&mut reader, BINCODE_CONFIG).unwrap();
-
-        RoadTrailTable { map }
+        OwnedArchive::<RoadTrailTableLoader, _>::new::<rkyv::rancor::Error>(buffer).unwrap()
     }
 
     pub fn generate_and_save() -> Result<(), Box<dyn Error>> {
         let mut table: RoadTrailHashMap =
-            HashMap::with_capacity_and_hasher(HASH_MAP_CAPACITY, SeededRandomState::default());
+            HashMap::with_capacity_and_hasher(HASH_MAP_CAPACITY, SeededRandomState::new());
 
         let graphs = RoadGraphIterator::new();
-
         for graph in graphs {
             table.insert(graph.value, slow_longest_trail(graph));
         }
@@ -68,14 +74,18 @@ impl RoadTrailTable {
         table.shrink_to_fit();
 
         let file = File::create(LOOKUP_TABLE_PATH)?;
-        let mut writer = BufWriter::new(file);
-        bincode::encode_into_std_write(table, &mut writer, BINCODE_CONFIG)?;
+        let writer = IoWriter::new(BufWriter::new(file));
+
+        to_bytes_in::<_, rkyv::rancor::Error>(&table, writer)?;
 
         Ok(())
     }
+}
 
-    fn lookup(&self, graph: u128) -> u8 {
-        *self.map.get(&graph).expect(&format!(
+// This is the impl for RoadTrailTable
+impl ArchivedRoadTrailTableLoader {
+    pub fn lookup(&self, graph: u128) -> u8 {
+        *self.map.get(&graph.into()).expect(&format!(
             "lookup table should contain road graph: {:#x}",
             graph
         ))
