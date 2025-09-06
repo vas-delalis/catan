@@ -1,27 +1,6 @@
-[package]
-name = "catan"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-ahash = "0.8.12"
-axum = "0.8.1"
-enum-map = { version = "2.7.3", features = ["serde"] }
-num = "0.4.3"
-rand = "0.9.1"
-rkyv = "0.8.11"
-rkyv_util = "0.1.0-alpha.1"
-serde = { version = "1.0.217", features = ["derive"] }
-tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
-tower = "0.5.2"
-tower-http = { version = "0.6.2", features = ["cors"] }
-
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "my_benchmark"
-harness = false
+[workspace]
+resolver = "3"
+members = ["agent","catan"]
 
 [profile.release]
 lto = true
