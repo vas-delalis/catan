@@ -1,3 +1,5 @@
+use std::fmt;
+
 use enum_map::{Enum, EnumMap};
 
 pub type HexId = usize;
@@ -15,7 +17,7 @@ pub use Resource::*;
 
 use crate::bundle::Bundle;
 
-#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Resource {
     Brick,
     Grain,
@@ -34,7 +36,7 @@ pub enum Purchasable {
     DevCard,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Action {
     RollDice,
     BuildSettlement(VertexId),
@@ -54,7 +56,15 @@ pub enum Action {
     EndTurn,
 }
 
-#[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Enum, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash,
+)]
 pub enum Player {
     Blue,
     Orange,
@@ -84,7 +94,7 @@ impl Player {
 
 pub const PLAYERS: [Player; 4] = [Blue, Orange, Red, White];
 
-#[derive(Debug, Enum, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Enum, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum DevCard {
     Knight,
     VictoryPoint,
