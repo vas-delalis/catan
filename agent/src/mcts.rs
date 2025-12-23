@@ -82,7 +82,7 @@ impl<A: Action, P: Player> Search<A, P> {
         let to_play = game.current_player();
         node.to_play = Some(to_play);
         if let Some((_, value)) = game.terminal_value(to_play) {
-            return value;
+            return 1.0 - value;
         }
         let actions = game.get_actions(to_play);
 
@@ -120,18 +120,18 @@ impl<A: Action, P: Player> Search<A, P> {
 
             // Backpropagate
             root.total_value += if root.to_play.unwrap() == scratch.current_player() {
-                1.0 - value
-            } else {
                 value
+            } else {
+                1.0 - value
             };
             root.visits += 1;
             let mut node = &mut root;
             for a in search_path {
                 node = node.children.get_mut(&a).unwrap();
                 node.total_value += if node.to_play.unwrap() == scratch.current_player() {
-                    1.0 - value
-                } else {
                     value
+                } else {
+                    1.0 - value
                 };
                 node.visits += 1;
             }
@@ -139,7 +139,7 @@ impl<A: Action, P: Player> Search<A, P> {
         let mut q: VecDeque<(Option<A>, &Node<A, P>, usize)> = VecDeque::new();
         q.push_back((None, &root, 0));
 
-        while let Some((action, node, level)) = q.pop_front() {
+        while let Some((_, node, level)) = q.pop_front() {
             if level > 2 {
                 continue;
             }
@@ -174,7 +174,7 @@ impl<A: Action, P: Player> Search<A, P> {
 
     fn add_exploration_noise(&self, node: &mut Node<A, P>) {
         let mut rng = rng();
-        let gamma = Gamma::new(self.dirichlet_alpha, 0.5).unwrap();
+        let gamma = Gamma::new(self.dirichlet_alpha, 1.0).unwrap();
         let fraction = 0.25; // TODO: parameterize
         for (_, child) in node.children.iter_mut() {
             child.prior *= 1.0 - fraction;
