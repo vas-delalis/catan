@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
+pub mod games;
 mod human;
 mod mcts;
 mod random;
@@ -8,6 +9,7 @@ mod random;
 use rand::rng;
 use rand::seq::SliceRandom;
 
+pub use self::human::Human;
 pub use self::mcts::Search;
 pub use self::random::Random;
 
@@ -36,6 +38,10 @@ pub trait GameState<A: Action, P: Player>: Clone {
     fn current_player(&self) -> P;
     fn is_terminal(&self) -> bool;
     fn terminal_value(&self, player: P) -> Option<(Outcome, f64)>;
+}
+
+pub trait MultiplayerGameState<A: Action, P: Player>: GameState<A, P> {
+    fn pairwise_terminal_value(&self, player1: P, player2: P) -> Option<(Outcome, f64)>;
 }
 
 pub struct Tournament<A, P, G> {
