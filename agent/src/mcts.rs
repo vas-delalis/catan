@@ -1,25 +1,32 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::marker::PhantomData;
 
 use rand::{rng, seq::index::sample_weighted};
 use rand_distr::{Distribution, Gamma};
 
-use crate::{Action, Agent, GameState, Player};
+use crate::{Agent, GameState, Player};
 
-pub struct Node<A: Action, P: Player> {
+pub trait Evaluator<G: GameState> {
+    fn evaluate(game_state: G) -> f64;
+}
+
+pub struct Node<G: GameState> {
     // id: String,
     visits: u16,
-    children: HashMap<A, Box<Node<A, P>>>,
-    to_play: Option<P>,
+    children: HashMap<G::Action, Box<Node<G>>>,
+    to_play: Option<G::Player>,
+    played: Option<G::Player>,
     prior: f64, // TODO: smaller? quantized?
     total_value: f64,
 }
 
-impl<A: Action, P: Player> Node<A, P> {
+impl<G: GameState> Node<G> {
     pub fn new(prior: f64) -> Self {
         Node {
             // id,
             prior,
             to_play: None,
+            played: None,
             children: HashMap::new(),
             visits: 0,
             total_value: 0.0,
@@ -34,7 +41,7 @@ impl<A: Action, P: Player> Node<A, P> {
     }
 }
 
-pub struct Search<A: Action, P: Player> {
+pub struct Search<G: GameState, E: Evaluator<G>> {
     pb_c_base: f64,
     pb_c_init: f64,
     dirichlet_alpha: f64,
@@ -43,11 +50,12 @@ pub struct Search<A: Action, P: Player> {
     // alphazero have chosen a number around 10 for that last quantity,
     // so for chess, with its branching factor of ~35, we get alpha = .3
     max_evals: usize,
-    history: Vec<(P, A)>,
+    history: Vec<(G::Player, G::Action)>,
     value: f64,
+    _phantom: PhantomData<E>,
 }
 
-impl<A: Action, P: Player> Search<A, P> {
+impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     pub fn new(
         max_evals: usize,
         pb_c_base: f64,
@@ -62,10 +70,11 @@ impl<A: Action, P: Player> Search<A, P> {
             max_evals,
             history: vec![],
             value,
+            _phantom: PhantomData,
         }
     }
 
-    fn score(&self, parent: &Node<A, P>, child: &Node<A, P>) -> f64 {
+    fn score(&self, parent: &Node<G>, child: &Node<G>) -> f64 {
         let mut pb_c =
             ((parent.visits as f64 + self.pb_c_base + 1.0) / self.pb_c_base).ln() + self.pb_c_init;
         pb_c *= f64::sqrt(parent.visits as f64) / (child.visits as f64 + 1.0);
@@ -75,19 +84,19 @@ impl<A: Action, P: Player> Search<A, P> {
         prior_score + value_score
     }
 
-    fn evaluate<'a, G>(&self, node: &'a mut Box<Node<A, P>>, game: &G) -> f64
-    where
-        G: GameState<A, P>,
-    {
+    fn evaluate<'a>(&self, node: &'a mut Box<Node<G>>, game: &G) -> f64 {
         let to_play = game.current_player();
         node.to_play = Some(to_play);
-        if let Some((_, value)) = game.terminal_value(to_play) {
-            return 1.0 - value;
+        // if let Some((_, value)) = game.outcome(to_play) {
+        if let Some((_, value)) = game.outcome(node.played.unwrap()) {
+            return value;
         }
         let actions = game.get_actions(to_play);
 
+        let value = E::evaluate(game.clone());
+
         // Run inference
-        let (value, policy_logits) = (self.value, vec![0f64; actions.len()]);
+        let (_, policy_logits) = (self.value, vec![0f64; actions.len()]);
         let policy: Vec<f64> = policy_logits.into_iter().map(|l| l.exp()).collect();
         let sum: f64 = policy.iter().sum();
 
@@ -99,61 +108,81 @@ impl<A: Action, P: Player> Search<A, P> {
         value
     }
 
-    pub fn run<G: GameState<A, P>>(&self, mut game_state: G) -> A {
+    pub fn run(&self, mut game_state: G) -> G::Action {
         let mut root = Box::new(Node::new(0.0));
-        self.evaluate(&mut root, &mut game_state);
+        root.played = Some(game_state.current_player());
+        self.evaluate(&mut root, &mut game_state); // arbitrary player
         self.add_exploration_noise(&mut root);
 
         for _ in 0..self.max_evals {
             let mut node = &mut root;
             let mut scratch = game_state.clone();
-            let mut search_path: Vec<A> = vec![];
+            let mut search_path: Vec<G::Action> = vec![];
+            let mut prev_player = node.to_play;
 
             while !node.children.is_empty() {
                 let (action, _) = self.select_child(node);
+                prev_player = node.to_play;
                 node = node.children.get_mut(&action).unwrap();
+                node.played = prev_player;
                 scratch.apply_action(action);
                 search_path.push(action);
             }
 
             let value = self.evaluate(node, &scratch);
+            // The correct value is the value from the perspective of the previous player.
 
             // Backpropagate
-            root.total_value += if root.to_play.unwrap() == scratch.current_player() {
-                value
-            } else {
-                1.0 - value
-            };
+            // root.total_value += if root.played == node.played {
+            //     -value
+            // } else {
+            //     value
+            // };
+            // root.total_value += if root.to_play.unwrap() == scratch.current_player() {
+            //     -value
+            // } else {
+            //     value
+            // };
             root.visits += 1;
             let mut node = &mut root;
             for a in search_path {
                 node = node.children.get_mut(&a).unwrap();
-                node.total_value += if node.to_play.unwrap() == scratch.current_player() {
+                // node.total_value += if node.to_play.unwrap() == scratch.current_player() {
+                //     -value
+                // } else {
+                //     value
+                // };
+                node.total_value += if node.played == prev_player {
                     value
                 } else {
-                    1.0 - value
+                    -value
                 };
                 node.visits += 1;
             }
         }
-        let mut q: VecDeque<(Option<A>, &Node<A, P>, usize)> = VecDeque::new();
-        q.push_back((None, &root, 0));
-
-        while let Some((_, node, level)) = q.pop_front() {
-            if level > 2 {
-                continue;
-            }
-            // print!("{}", &String::from(" ").repeat(level));
-            // println!("{:?} {} {:.1}", action, node.visits, node.value());
-            for (&action, child) in node.children.iter() {
-                q.push_back((Some(action), child, level + 1));
-            }
-        }
+        // let mut q: Vec<(Option<G::Action>, &Node<G>, usize)> = Vec::new();
+        // q.push((None, &root, 0));
+        // while let Some((action, node, level)) = q.pop() {
+        //     if level > 3 || node.visits == 0 {
+        //         continue;
+        //     }
+        //     print!("{}", &String::from(" ").repeat(level));
+        //     println!(
+        //         "{:?} {:?} {} {:.1}",
+        //         node.played,
+        //         action,
+        //         node.visits,
+        //         node.value()
+        //     );
+        //     for (&action, child) in node.children.iter() {
+        //         q.push((Some(action), child, level + 1));
+        //     }
+        // }
 
         return self.select_action(&root);
     }
 
-    fn select_action(&self, root: &Node<A, P>) -> A {
+    fn select_action(&self, root: &Node<G>) -> G::Action {
         let visit_counts = root.children.iter().map(|(&a, v)| (v.visits, a)).collect();
         // TODO: parameterize
         if self.history.len() < 100 {
@@ -162,7 +191,7 @@ impl<A: Action, P: Player> Search<A, P> {
         visit_counts.iter().max_by_key(|(c, _)| c).unwrap().1
     }
 
-    fn select_child<'a>(&self, node: &'a Node<A, P>) -> (A, &'a Box<Node<A, P>>) {
+    fn select_child<'a>(&self, node: &'a Node<G>) -> (G::Action, &'a Box<Node<G>>) {
         let (&action, child) = node
             .children
             .iter()
@@ -172,7 +201,7 @@ impl<A: Action, P: Player> Search<A, P> {
         (action, child)
     }
 
-    fn add_exploration_noise(&self, node: &mut Node<A, P>) {
+    fn add_exploration_noise(&self, node: &mut Node<G>) {
         let mut rng = rng();
         let gamma = Gamma::new(self.dirichlet_alpha, 1.0).unwrap();
         let fraction = 0.25; // TODO: parameterize
@@ -183,8 +212,8 @@ impl<A: Action, P: Player> Search<A, P> {
     }
 }
 
-impl<A: Action, P: Player, G: GameState<A, P>> Agent<A, P, G> for Search<A, P> {
-    fn get_action(&self, game_state: G) -> A {
+impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
+    fn get_action(&self, game_state: G) -> G::Action {
         self.run(game_state)
     }
 }

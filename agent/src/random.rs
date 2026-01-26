@@ -1,10 +1,11 @@
-use crate::{Action, Agent, GameState, Player};
+use crate::{Agent, GameState};
 use rand::{rng, seq::IndexedRandom};
 
+#[derive(Debug, Clone)]
 pub struct Random {}
 
-impl<A: Action, P: Player, G: GameState<A, P>> Agent<A, P, G> for Random {
-    fn get_action(&self, game_state: G) -> A {
+impl<G: GameState> Agent<G> for Random {
+    fn get_action(&self, game_state: G) -> G::Action {
         *game_state
             .get_actions(game_state.current_player())
             .choose(&mut rng())

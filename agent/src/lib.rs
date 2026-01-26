@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -10,11 +11,11 @@ use rand::rng;
 use rand::seq::SliceRandom;
 
 pub use self::human::Human;
-pub use self::mcts::Search;
+pub use self::mcts::{Evaluator, Search};
 pub use self::random::Random;
 
-pub trait Agent<A: Action, P: Player, G: GameState<A, P>> {
-    fn get_action(&self, game_state: G) -> A;
+pub trait Agent<G: GameState> {
+    fn get_action(&self, game_state: G) -> G::Action;
 }
 
 pub trait Action: Hash + Eq + Copy + Debug {}
@@ -31,21 +32,28 @@ pub enum Outcome {
     Loss,
 }
 
-pub trait GameState<A: Action, P: Player>: Clone {
+pub trait GameState: Clone {
+    type Action: Action;
+    type Player: Player;
+
     fn new() -> Self;
-    fn get_actions(&self, player: P) -> Vec<A>;
-    fn apply_action(&mut self, action: A);
-    fn current_player(&self) -> P;
+    fn get_actions(&self, player: Self::Player) -> Vec<Self::Action>;
+    fn apply_action(&mut self, action: Self::Action);
+    fn current_player(&self) -> Self::Player;
     fn is_terminal(&self) -> bool;
-    fn terminal_value(&self, player: P) -> Option<(Outcome, f64)>;
+    fn outcome(&self, player: Self::Player) -> Option<(Outcome, f64)>;
 }
 
-pub trait MultiplayerGameState<A: Action, P: Player>: GameState<A, P> {
-    fn pairwise_terminal_value(&self, player1: P, player2: P) -> Option<(Outcome, f64)>;
+pub trait MultiplayerGameState: GameState {
+    fn pairwise_outcome(
+        &self,
+        player1: Self::Player,
+        player2: Self::Player,
+    ) -> Option<(Outcome, f64)>;
 }
 
-pub struct Tournament<A, P, G> {
-    roster: Vec<Participant<A, P, G>>,
+pub struct Tournament<G> {
+    roster: Vec<Participant<G>>,
     scorelines: Vec<Vec<Scoreline>>,
     test_results: Vec<Vec<Option<TestResult>>>,
 }
@@ -57,9 +65,9 @@ struct Scoreline {
     losses: usize,
 }
 
-struct Participant<A, P, G> {
+struct Participant<G> {
     id: usize,
-    agent: Box<dyn Agent<A, P, G>>,
+    agent: Box<dyn Agent<G>>,
     rating: f64,
     wins: usize,
     draws: usize,
@@ -75,7 +83,7 @@ fn log_likelihood_ratio(wins: usize, draws: usize, losses: usize) -> f64 {
         return 0.0;
     }
     let elo0 = 0.0;
-    let elo1 = 10.0;
+    let elo1 = 5.0;
     let n = (wins + draws + losses) as f64;
     let (w, d) = (wins as f64 / n, draws as f64 / n);
     let s = w + d / 2.0;
@@ -93,8 +101,8 @@ enum TestResult {
     H1,
 }
 
-impl<A: Action, P: Player, G: GameState<A, P>> Tournament<A, P, G> {
-    pub fn new(agents: Vec<Box<dyn Agent<A, P, G>>>) -> Self {
+impl<G: GameState> Tournament<G> {
+    pub fn new(agents: Vec<Box<dyn Agent<G>>>) -> Self {
         Tournament {
             scorelines: vec![
                 vec![
@@ -139,84 +147,82 @@ impl<A: Action, P: Player, G: GameState<A, P>> Tournament<A, P, G> {
         None
     }
 
-    pub fn play(&mut self, games: usize) {
-        let mut roster_ids: Vec<usize> = (0..self.roster.len()).collect();
-        let mut result_count = 0;
-        let matchup_count = self.roster.len().pow(2) - self.roster.len();
-        while result_count < matchup_count {
-            let ids = loop {
-                let (ids, _) = roster_ids.partial_shuffle(&mut rng(), 2);
-                if self.test_results[ids[0]][ids[1]].is_none() {
-                    break ids;
-                }
-            };
-            let mut players = P::list();
+    pub fn play(&mut self) {
+        let mut matchups = HashSet::new();
+        for i in 0..self.roster.len() {
+            for j in 0..self.roster.len() {
+                if i == j {
+                    continue;
+                };
+                matchups.insert((i, j));
+            }
+        }
+        while matchups.len() > 0 {
+            let (i, j) = matchups.iter().next().cloned().unwrap();
+            let mut players = G::Player::list();
             players.shuffle(&mut rng());
-
-            let participants: Vec<(usize, P)> =
-                ids.iter().cloned().zip(players.into_iter()).collect();
 
             let mut game = G::new();
             while !game.is_terminal() {
                 let scratch = game.clone();
-                let id = participants
-                    .iter()
-                    .find(|(_, p)| *p == game.current_player())
-                    .map(|(id, _)| *id)
-                    .unwrap();
+                let id = if game.current_player() == players[0] {
+                    i
+                } else {
+                    j
+                };
 
                 let agent = &self.roster[id].agent;
                 let action = agent.get_action(scratch);
                 game.apply_action(action);
             }
 
-            let (outcome, score) = game.terminal_value(participants[0].1).unwrap();
+            let (outcome, score) = game.outcome(players[0]).unwrap();
             // dbg!(outcome, participants[0].0);
 
             match outcome {
                 Outcome::Win => {
-                    self.scorelines[ids[0]][ids[1]].wins += 1;
-                    self.scorelines[ids[1]][ids[0]].losses += 1;
-                    self.roster[participants[0].0].wins += 1;
-                    self.roster[participants[1].0].losses += 1;
+                    self.scorelines[i][j].wins += 1;
+                    self.scorelines[j][i].losses += 1;
+                    self.roster[i].wins += 1;
+                    self.roster[j].losses += 1;
                 }
                 Outcome::Loss => {
-                    self.scorelines[ids[0]][ids[1]].losses += 1;
-                    self.scorelines[ids[1]][ids[0]].wins += 1;
-                    self.roster[participants[0].0].losses += 1;
-                    self.roster[participants[1].0].wins += 1;
+                    self.scorelines[i][j].losses += 1;
+                    self.scorelines[j][i].wins += 1;
+                    self.roster[i].losses += 1;
+                    self.roster[j].wins += 1;
                 }
                 Outcome::Draw => {
-                    self.scorelines[ids[0]][ids[1]].draws += 1;
-                    self.scorelines[ids[1]][ids[0]].draws += 1;
-                    self.roster[participants[0].0].draws += 1;
-                    self.roster[participants[1].0].draws += 1;
+                    self.scorelines[i][j].draws += 1;
+                    self.scorelines[j][i].draws += 1;
+                    self.roster[i].draws += 1;
+                    self.roster[j].draws += 1;
                 }
             }
 
-            let rating0 = self.roster[ids[0]].rating;
-            let rating1 = self.roster[ids[1]].rating;
-            let expected_score0 = expected_score(rating0 - rating1);
+            let expected_score = expected_score(self.roster[i].rating - self.roster[j].rating);
 
-            let delta = 16.0 * (score - expected_score0);
-            self.roster[ids[0]].rating += delta;
-            self.roster[ids[1]].rating -= delta;
+            let delta = 16.0 * ((score + 1.0) / 2.0 - expected_score);
+            self.roster[i].rating += delta;
+            self.roster[j].rating -= delta;
 
             if self.roster.len() > 0 {
-                let scoreline = &self.scorelines[ids[0]][ids[1]];
+                let scoreline = &self.scorelines[i][j];
                 if let Some(result) =
                     self.termination_test(scoreline.wins, scoreline.draws, scoreline.losses)
                 {
-                    self.test_results[ids[0]][ids[1]] = Some(result);
-                    result_count += 1;
+                    self.test_results[i][j] = Some(result);
+                    matchups.remove(&(i, j));
                     match result {
                         TestResult::H0 => {
-                            println!("Agent {} is no better than agent {}", ids[0], ids[1]);
-                            // break;
+                            println!("Agent {} is no better than agent {}", i, j);
                         }
                         TestResult::H1 => {
-                            println!("Agent {} is better than agent {}", ids[0], ids[1]);
-                            // break;
+                            println!("Agent {} is better than agent {}", i, j);
+                            println!(
+                                "{} {} {}",
+                                scoreline.wins, scoreline.draws, scoreline.losses,
+                            );
                         }
                     }
                 }
@@ -225,11 +231,99 @@ impl<A: Action, P: Player, G: GameState<A, P>> Tournament<A, P, G> {
     }
 
     pub fn leaderboard(&self) {
+        for i in 0..self.scorelines.len() {
+            for j in 0..self.scorelines.len() {
+                if i == j {
+                    continue;
+                }
+                let line = &self.scorelines[i][j];
+                println!("{} {} {}/{}/{}", i, j, line.wins, line.draws, line.losses)
+            }
+        }
         for agent in &self.roster {
             println!(
                 "{} {:.0} {}/{}/{}",
                 agent.id, agent.rating, agent.wins, agent.draws, agent.losses
             )
+        }
+    }
+}
+
+impl<G: MultiplayerGameState> Tournament<G> {
+    pub fn play_multiplayer(&mut self) {
+        let mut game_count: usize = 0;
+        let mut result_count = 0;
+        let matchup_count = 12;
+        while result_count < matchup_count {
+            game_count += 1;
+            if game_count % 10000 == 0 {
+                dbg!(&self.scorelines[3][0]);
+                dbg!(&self.scorelines[3][1]);
+                dbg!(&self.scorelines[3][2]);
+            }
+            let mut players = G::Player::list();
+            players.shuffle(&mut rng());
+
+            let mut game = G::new();
+            while !game.is_terminal() {
+                let scratch = game.clone();
+                let id = players
+                    .iter()
+                    .position(|&p| p == game.current_player())
+                    .unwrap();
+
+                let agent = &self.roster[id].agent;
+                let action = agent.get_action(scratch);
+                game.apply_action(action);
+            }
+
+            for i in 0..4 {
+                for j in 0..4 {
+                    if i == j {
+                        continue;
+                    }
+
+                    if i < j {
+                        let (outcome, _) = game.pairwise_outcome(players[i], players[j]).unwrap();
+                        match outcome {
+                            Outcome::Win => {
+                                self.scorelines[i][j].wins += 1;
+                                self.scorelines[j][i].losses += 1;
+                            }
+                            Outcome::Loss => {
+                                self.scorelines[j][i].wins += 1;
+                                self.scorelines[i][j].losses += 1;
+                            }
+                            Outcome::Draw => {
+                                self.scorelines[i][j].draws += 1;
+                                self.scorelines[j][i].draws += 1;
+                            }
+                        }
+                    }
+
+                    if self.test_results[i][j].is_some() {
+                        continue;
+                    }
+
+                    // dbg!(&self.scorelines[i][j]);
+                    if let Some(result) = self.termination_test(
+                        self.scorelines[i][j].wins,
+                        self.scorelines[i][j].draws,
+                        self.scorelines[i][j].losses,
+                    ) {
+                        self.test_results[i][j] = Some(result);
+                        result_count += 1;
+                        match result {
+                            TestResult::H0 => {
+                                println!("Agent {} is no better than agent {}", i, j);
+                            }
+                            TestResult::H1 => {
+                                println!("Agent {} is better than agent {}", i, j);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

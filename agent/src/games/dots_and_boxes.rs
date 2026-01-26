@@ -1,14 +1,14 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash};
 
-use crate::{GameState, MultiplayerGameState, Outcome, Player as PlayerTrait};
+use crate::{Evaluator, GameState, MultiplayerGameState, Outcome, Player as PlayerTrait};
 
-const WIDTH: usize = 3;
+const WIDTH: usize = 2;
 const HEIGHT: usize = 3;
 const N_EDGES: usize = 2 * WIDTH * HEIGHT + WIDTH + HEIGHT;
 
 #[derive(Clone)]
 pub struct DotsAndBoxes {
-    board: HashMap<Edge, Player>,
+    pub board: HashMap<Edge, Player>,
     current_player: Player,
     score: [usize; 4],
 }
@@ -28,7 +28,7 @@ impl PlayerTrait for Player {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Dir {
+pub enum Dir {
     N,
     W,
 }
@@ -51,7 +51,7 @@ impl Box {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Edge(i8, i8, Dir);
+pub struct Edge(pub i8, pub i8, pub Dir);
 
 impl Edge {
     fn in_bounds(&self) -> bool {
@@ -101,30 +101,28 @@ impl Edge {
 }
 
 impl DotsAndBoxes {
-    fn check_winner(&self) -> Option<Player> {
+    fn winners(&self) -> Option<Vec<Player>> {
         if self.is_terminal() {
-            let (winner, _) = self
-                .score
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, s)| *s)
-                .unwrap();
-
-            if self.score[winner] == self.score[0] && self.score[0] == self.score[3] {
-                return None; // Draw
-            }
-            return Some(Player::list()[winner]);
+            let max = *self.score.iter().max().unwrap();
+            let players = Player::list();
+            let winners = (0..players.len())
+                .filter(|&i| self.score[i] == max)
+                .map(|i| players[i]);
+            return Some(winners.collect());
         }
         None
     }
 }
 
-impl GameState<Edge, Player> for DotsAndBoxes {
+impl GameState for DotsAndBoxes {
+    type Action = Edge;
+    type Player = Player;
+
     fn new() -> Self {
         DotsAndBoxes {
             board: HashMap::with_capacity(N_EDGES),
             current_player: A,
-            score: [0; 4],
+            score: [0, 0, 0, 0],
         }
     }
 
@@ -168,20 +166,16 @@ impl GameState<Edge, Player> for DotsAndBoxes {
         }
     }
 
-    fn terminal_value(&self, player: Player) -> Option<(Outcome, f64)> {
+    fn outcome(&self, player: Player) -> Option<(Outcome, f64)> {
         use Outcome::*;
         if !self.is_terminal() {
             return None;
         }
-        match self.check_winner() {
-            Some(winner) => {
-                if winner == player {
-                    Some((Win, 1.0))
-                } else {
-                    Some((Loss, 0.0))
-                }
-            }
-            None => Some((Draw, 0.25)),
+        let winners = self.winners().unwrap();
+        if winners.contains(&player) {
+            return Some((Win, 1.0));
+        } else {
+            return Some((Loss, 0.0));
         }
     }
 
@@ -190,29 +184,20 @@ impl GameState<Edge, Player> for DotsAndBoxes {
     }
 }
 
-impl MultiplayerGameState<Edge, Player> for DotsAndBoxes {
-    fn pairwise_terminal_value(
-        &self,
-        value_player: Player,
-        other_player: Player,
-    ) -> Option<(Outcome, f64)> {
+impl MultiplayerGameState for DotsAndBoxes {
+    fn pairwise_outcome(&self, player1: Player, player2: Player) -> Option<(Outcome, f64)> {
         use Outcome::*;
-        if self.board.len() == N_EDGES {
-            let (winner, _) = self
-                .score
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, s)| *s)
-                .unwrap();
-            let winner = Player::list()[winner];
-
-            if value_player == winner {
-                return Some((Win, 1.0));
-            } else if other_player == winner {
-                return Some((Loss, 0.0));
-            } else {
+        if self.is_terminal() {
+            let winners = self.winners().unwrap();
+            let p1_win = winners.contains(&player1);
+            let p2_win = winners.contains(&player2);
+            if p1_win == p2_win {
                 return Some((Draw, 0.5));
             }
+            if p1_win {
+                return Some((Win, 1.0));
+            }
+            return Some((Loss, 0.0));
         }
         None
     }
@@ -274,6 +259,34 @@ impl Display for DotsAndBoxes {
     }
 }
 
+pub struct TopsideEvaluator {}
+impl Evaluator<DotsAndBoxes> for TopsideEvaluator {
+    fn evaluate(game_state: DotsAndBoxes) -> f64 {
+        let limit = ((WIDTH + 1) / 2) as i8;
+        let all_topside = game_state
+            .board
+            .iter()
+            .all(|(&e, &p)| p != game_state.current_player() || e.1 < limit);
+        if all_topside { 1.0 } else { 0.0 }
+    }
+}
+
+pub struct ScoreEvaluator {}
+impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
+    fn evaluate(game_state: DotsAndBoxes) -> f64 {
+        let sum: usize = game_state.score.iter().sum();
+        if sum == 0 {
+            return 0.0;
+        }
+        let idx = Player::list()
+            .iter()
+            .position(|&p| game_state.current_player() == p)
+            .unwrap();
+        let share = game_state.score[idx] as f64 / sum as f64;
+        share * 2.0 - 1.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,7 +330,7 @@ mod tests {
         }
 
         dbg!(game.score);
-        dbg!(game.terminal_value(A));
+        dbg!(game.outcome(A));
     }
 
     #[test]
@@ -349,5 +362,20 @@ mod tests {
         }
 
         assert_eq!(rendered, expected);
+    }
+
+    #[test]
+    fn score_evaluator() {
+        let mut game = DotsAndBoxes::new();
+        game.apply_action(Edge(0, 0, N));
+        game.current_player = A;
+        game.apply_action(Edge(0, 0, W));
+        game.current_player = A;
+        game.apply_action(Edge(0, 1, N));
+        game.current_player = A;
+        game.apply_action(Edge(1, 0, W));
+        game.current_player = A;
+
+        assert!(ScoreEvaluator::evaluate(game) == 0.1);
     }
 }

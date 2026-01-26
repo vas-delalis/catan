@@ -1,11 +1,14 @@
-use std::{fmt::Display, io};
+use std::{
+    fmt::Display,
+    io::{self, Write},
+};
 
-use crate::{Action, Agent, GameState, Player};
+use crate::{Agent, GameState};
 
 pub struct Human {}
 
-impl<A: Action, P: Player, G: GameState<A, P> + Display> Agent<A, P, G> for Human {
-    fn get_action(&self, game_state: G) -> A {
+impl<G: GameState + Display> Agent<G> for Human {
+    fn get_action(&self, game_state: G) -> G::Action {
         let actions = game_state.get_actions(game_state.current_player());
 
         println!("{}", game_state);
@@ -13,6 +16,8 @@ impl<A: Action, P: Player, G: GameState<A, P> + Display> Agent<A, P, G> for Huma
         println!("{:?}", actions);
 
         let mut action_idx = String::new();
+        print!("Action: ");
+        io::stdout().flush().unwrap();
         io::stdin()
             .read_line(&mut action_idx)
             .expect("failed to read line");

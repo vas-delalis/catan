@@ -15,9 +15,9 @@ impl Player for TicTacToePlayer {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TicTacToeAction(u8); // board position 0-8
+pub struct Cell(pub u8); // board position 0-8
 
-impl Hash for TicTacToeAction {
+impl Hash for Cell {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state);
     }
@@ -54,7 +54,10 @@ impl TicTacToe {
     }
 }
 
-impl GameState<TicTacToeAction, TicTacToePlayer> for TicTacToe {
+impl GameState for TicTacToe {
+    type Action = Cell;
+    type Player = TicTacToePlayer;
+
     fn new() -> Self {
         TicTacToe {
             board: [None; 9],
@@ -62,11 +65,11 @@ impl GameState<TicTacToeAction, TicTacToePlayer> for TicTacToe {
         }
     }
 
-    fn get_actions(&self, _player: TicTacToePlayer) -> Vec<TicTacToeAction> {
+    fn get_actions(&self, _player: TicTacToePlayer) -> Vec<Cell> {
         self.board
             .iter()
             .enumerate()
-            .filter_map(|(i, cell)| cell.is_none().then_some(TicTacToeAction(i as u8)))
+            .filter_map(|(i, cell)| cell.is_none().then_some(Cell(i as u8)))
             .collect()
     }
 
@@ -74,7 +77,7 @@ impl GameState<TicTacToeAction, TicTacToePlayer> for TicTacToe {
         self.current_player
     }
 
-    fn apply_action(&mut self, mv: TicTacToeAction) {
+    fn apply_action(&mut self, mv: Cell) {
         self.board[mv.0 as usize] = Some(self.current_player);
         self.current_player = if self.current_player == TicTacToePlayer::X {
             TicTacToePlayer::O
@@ -83,16 +86,16 @@ impl GameState<TicTacToeAction, TicTacToePlayer> for TicTacToe {
         };
     }
 
-    fn terminal_value(&self, player: TicTacToePlayer) -> Option<(Outcome, f64)> {
+    fn outcome(&self, player: TicTacToePlayer) -> Option<(Outcome, f64)> {
         if self.is_terminal() {
             if let Some(winner) = self.check_winner() {
                 if winner == player {
                     Some((Outcome::Win, 1.0))
                 } else {
-                    Some((Outcome::Loss, 0.0))
+                    Some((Outcome::Loss, -1.0))
                 }
             } else {
-                Some((Outcome::Draw, 0.5))
+                Some((Outcome::Draw, 0.0))
             }
         } else {
             None
