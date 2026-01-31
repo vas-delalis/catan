@@ -73,31 +73,31 @@ impl Edge {
         }
     }
 
-    fn neighbors(&self) -> Vec<Edge> {
-        let Edge(x, y, dir) = *self;
-        match dir {
-            N => [
-                (0, -1, N),
-                (0, -1, W),
-                (1, -1, W),
-                (0, 0, W),
-                (0, 1, N),
-                (1, 0, W),
-            ],
-            W => [
-                (-1, 1, N),
-                (-1, 0, N),
-                (-1, 0, W),
-                (0, 0, N),
-                (0, 1, N),
-                (1, 0, W),
-            ],
-        }
-        .into_iter()
-        .map(|(i, j, d)| Edge(x + i, y + j, d))
-        .filter(|e: &Edge| e.in_bounds())
-        .collect()
-    }
+    // fn neighbors(&self) -> Vec<Edge> {
+    //     let Edge(x, y, dir) = *self;
+    //     match dir {
+    //         N => [
+    //             (0, -1, N),
+    //             (0, -1, W),
+    //             (1, -1, W),
+    //             (0, 0, W),
+    //             (0, 1, N),
+    //             (1, 0, W),
+    //         ],
+    //         W => [
+    //             (-1, 1, N),
+    //             (-1, 0, N),
+    //             (-1, 0, W),
+    //             (0, 0, N),
+    //             (0, 1, N),
+    //             (1, 0, W),
+    //         ],
+    //     }
+    //     .into_iter()
+    //     .map(|(i, j, d)| Edge(x + i, y + j, d))
+    //     .filter(|e: &Edge| e.in_bounds())
+    //     .collect()
+    // }
 }
 
 impl DotsAndBoxes {

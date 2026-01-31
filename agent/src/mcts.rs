@@ -4,14 +4,13 @@ use std::marker::PhantomData;
 use rand::{rng, seq::index::sample_weighted};
 use rand_distr::{Distribution, Gamma};
 
-use crate::{Agent, GameState, Player};
+use crate::{Agent, GameState};
 
 pub trait Evaluator<G: GameState> {
     fn evaluate(game_state: G) -> f64;
 }
 
 pub struct Node<G: GameState> {
-    // id: String,
     visits: u16,
     children: HashMap<G::Action, Box<Node<G>>>,
     to_play: Option<G::Player>,
@@ -23,7 +22,6 @@ pub struct Node<G: GameState> {
 impl<G: GameState> Node<G> {
     pub fn new(prior: f64) -> Self {
         Node {
-            // id,
             prior,
             to_play: None,
             played: None,
@@ -50,9 +48,8 @@ pub struct Search<G: GameState, E: Evaluator<G>> {
     // alphazero have chosen a number around 10 for that last quantity,
     // so for chess, with its branching factor of ~35, we get alpha = .3
     max_evals: usize,
-    history: Vec<(G::Player, G::Action)>,
     value: f64,
-    _phantom: PhantomData<E>,
+    _phantom: PhantomData<(G, E)>,
 }
 
 impl<G: GameState, E: Evaluator<G>> Search<G, E> {
@@ -68,7 +65,6 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             pb_c_init,
             dirichlet_alpha,
             max_evals,
-            history: vec![],
             value,
             _phantom: PhantomData,
         }
@@ -87,7 +83,6 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     fn evaluate<'a>(&self, node: &'a mut Box<Node<G>>, game: &G) -> f64 {
         let to_play = game.current_player();
         node.to_play = Some(to_play);
-        // if let Some((_, value)) = game.outcome(to_play) {
         if let Some((_, value)) = game.outcome(node.played.unwrap()) {
             return value;
         }
@@ -133,25 +128,15 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             // The correct value is the value from the perspective of the previous player.
 
             // Backpropagate
-            // root.total_value += if root.played == node.played {
-            //     -value
-            // } else {
-            //     value
-            // };
-            // root.total_value += if root.to_play.unwrap() == scratch.current_player() {
-            //     -value
-            // } else {
-            //     value
-            // };
+            root.total_value += if root.played == prev_player {
+                value
+            } else {
+                -value
+            };
             root.visits += 1;
             let mut node = &mut root;
             for a in search_path {
                 node = node.children.get_mut(&a).unwrap();
-                // node.total_value += if node.to_play.unwrap() == scratch.current_player() {
-                //     -value
-                // } else {
-                //     value
-                // };
                 node.total_value += if node.played == prev_player {
                     value
                 } else {
@@ -179,13 +164,13 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         //     }
         // }
 
-        return self.select_action(&root);
+        return self.select_action(&root, false); // TODO: greediness
     }
 
-    fn select_action(&self, root: &Node<G>) -> G::Action {
+    fn select_action(&self, root: &Node<G>, greedy: bool) -> G::Action {
         let visit_counts = root.children.iter().map(|(&a, v)| (v.visits, a)).collect();
         // TODO: parameterize
-        if self.history.len() < 100 {
+        if greedy {
             return softmax_sample(visit_counts);
         }
         visit_counts.iter().max_by_key(|(c, _)| c).unwrap().1
