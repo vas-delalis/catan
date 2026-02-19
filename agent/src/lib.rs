@@ -5,6 +5,7 @@ use std::hash::Hash;
 pub mod games;
 mod human;
 mod mcts;
+pub mod ml;
 mod random;
 
 use rand::rng;

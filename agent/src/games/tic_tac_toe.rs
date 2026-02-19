@@ -23,14 +23,14 @@ impl Hash for Cell {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TicTacToe {
-    board: [Option<TicTacToePlayer>; 9],
+    pub board: [Option<TicTacToePlayer>; 9],
     current_player: TicTacToePlayer,
 }
 
 impl TicTacToe {
-    fn check_winner(&self) -> Option<TicTacToePlayer> {
+    pub fn check_winner(&self) -> Option<TicTacToePlayer> {
         let lines = [
             [0, 1, 2],
             [3, 4, 5],

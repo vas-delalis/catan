@@ -1,2 +1,6 @@
 [build]
 rustflags = ["-C", "target-cpu=native"]
+[env]
+LIBTORCH = "/usr/local/libtorch"
+LD_LIBRARY_PATH = "/usr/local/libtorch/lib"
+LIBTORCH_BYPASS_VERSION_CHECK = "1"

@@ -1,9 +1,22 @@
+#![recursion_limit = "256"]
+
 use agent::{
     Action, Agent, Evaluator, GameState, Human, Player, Random, Search, Tournament,
     games::{
         Cell, DotsAndBoxes, DotsAndBoxesAction as DnbEdge, DotsAndBoxesDir as DnbDir,
         ScoreEvaluator, TicTacToe, TopsideEvaluator,
     },
+    ml::{ModelConfig, TicTacToeBatcher, TrainingConfig, train},
+};
+use burn::{
+    backend::{
+        Autodiff,
+        libtorch::{LibTorch, LibTorchDevice},
+    },
+    data::dataloader::batcher::Batcher,
+    optim::AdamConfig,
+    prelude::*,
+    record::{CompactRecorder, Recorder},
 };
 
 fn human_vs_human() {
@@ -29,8 +42,8 @@ impl<G: GameState> Evaluator<G> for ConstantEvaluator {
 fn tournament() {
     let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
     for value in [0.0] {
-        for evals in [1000] {
-            for alpha in [0.0025, 0.0050, 0.0075, 0.0100] {
+        for evals in [1000, 1001] {
+            for alpha in [0.005] {
                 agents.push(Box::new(Search::<TicTacToe, ConstantEvaluator>::new(
                     evals, 1.41, 1.0, alpha, value,
                 )));
@@ -94,6 +107,41 @@ fn wtf2() {
     agent.run(game);
 }
 
+pub fn infer<B: Backend>(artifact_dir: &str, device: B::Device) {
+    let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
+        .expect("Config should exist for the model; run train first");
+    let record = CompactRecorder::new()
+        .load(format!("{artifact_dir}/model").into(), &device)
+        .expect("Trained model should exist; run train first");
+
+    let model = config.model.init::<B>(&device).load_record(record);
+
+    let batcher = TicTacToeBatcher::default();
+    let game = TicTacToe::new();
+    let batch = batcher.batch(vec![(game, None)], &device);
+    let output = model.forward(batch.images);
+    dbg!(&output);
+    let predicted = output.into_scalar();
+
+    println!("Predicted {predicted}");
+}
+
 fn main() {
-    tournament();
+    type B = LibTorch<f32>;
+    type AB = Autodiff<B>;
+
+    let device = LibTorchDevice::Cuda(0);
+
+    let artifact_dir = "./model";
+
+    let model_config = ModelConfig::new(512);
+    let model = model_config.init::<B>(&device);
+
+    train::<AB>(
+        artifact_dir,
+        TrainingConfig::new(model_config, AdamConfig::new()),
+        device.clone(),
+    );
+
+    infer::<AB>(artifact_dir, device.clone());
 }
