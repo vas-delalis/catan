@@ -2,18 +2,14 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+pub mod agents;
 pub mod games;
-mod human;
-mod mcts;
 pub mod ml;
-mod random;
 
 use rand::rng;
 use rand::seq::SliceRandom;
 
-pub use self::human::Human;
-pub use self::mcts::{Evaluator, Search};
-pub use self::random::Random;
+pub use self::agents::*;
 
 pub trait Agent<G: GameState> {
     fn get_action(&self, game_state: G) -> G::Action;
