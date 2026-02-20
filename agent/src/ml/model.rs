@@ -1,4 +1,5 @@
 use burn::{
+    data::dataloader::batcher::Batcher,
     nn::{
         Dropout, DropoutConfig, Linear, LinearConfig, Relu,
         conv::{Conv2d, Conv2dConfig},
@@ -6,6 +7,8 @@ use burn::{
     },
     prelude::*,
 };
+
+use crate::{agents::Evaluator, games::TicTacToe, ml::TicTacToeBatcher};
 
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
@@ -47,7 +50,7 @@ impl<B: Backend> Model<B> {
     ///   - Images [batch_size, planes, height, width]
     ///   - Output [batch_size]
     pub fn forward(&self, images: Tensor<B, 4>) -> Tensor<B, 1> {
-        let [batch_size, _, height, width] = images.dims();
+        let [batch_size, _, _, _] = images.dims();
 
         // Create a channel at the second dimension.
         let x = images; //.reshape([batch_size, 3, height, width]);
@@ -65,5 +68,16 @@ impl<B: Backend> Model<B> {
         let x = self.activation.forward(x);
 
         self.linear2.forward(x).reshape([-1]) // [batch_size]
+    }
+}
+
+impl<B: Backend> Evaluator<TicTacToe> for Model<B> {
+    fn evaluate(&self, game_state: TicTacToe) -> f64 {
+        let batcher = TicTacToeBatcher::default();
+        let device = &self.devices()[0];
+
+        let batch = batcher.batch(vec![(game_state, None)], device);
+        let output = self.forward(batch.images);
+        output.into_scalar().to_f64()
     }
 }

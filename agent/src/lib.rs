@@ -9,8 +9,6 @@ pub mod ml;
 use rand::rng;
 use rand::seq::SliceRandom;
 
-pub use self::agents::*;
-
 pub trait Agent<G: GameState> {
     fn get_action(&self, game_state: G) -> G::Action;
 }
@@ -130,11 +128,12 @@ impl<G: GameState> Tournament<G> {
 
     /// Runs a sequential probability ratio test for a two-agent match-up with the given scoreline.
     fn termination_test(&self, wins: usize, draws: usize, losses: usize) -> Option<TestResult> {
-        let alpha = 0.01;
-        let beta = 0.01;
+        let alpha = 0.05;
+        let beta = 0.05;
         let upper = f64::ln((1.0 - beta) / alpha);
         let lower = f64::ln(beta / (1.0 - alpha));
         let ratio = log_likelihood_ratio(wins, draws, losses);
+
         if ratio > upper {
             return Some(TestResult::H1);
         }

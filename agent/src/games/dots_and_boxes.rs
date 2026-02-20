@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash};
 
-use crate::{Evaluator, GameState, MultiplayerGameState, Outcome, Player as PlayerTrait};
+use crate::{GameState, MultiplayerGameState, Outcome, Player as PlayerTrait, agents::Evaluator};
 
 const WIDTH: usize = 2;
 const HEIGHT: usize = 3;
@@ -261,7 +261,7 @@ impl Display for DotsAndBoxes {
 
 pub struct TopsideEvaluator {}
 impl Evaluator<DotsAndBoxes> for TopsideEvaluator {
-    fn evaluate(game_state: DotsAndBoxes) -> f64 {
+    fn evaluate(&self, game_state: DotsAndBoxes) -> f64 {
         let limit = ((WIDTH + 1) / 2) as i8;
         let all_topside = game_state
             .board
@@ -273,7 +273,7 @@ impl Evaluator<DotsAndBoxes> for TopsideEvaluator {
 
 pub struct ScoreEvaluator {}
 impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
-    fn evaluate(game_state: DotsAndBoxes) -> f64 {
+    fn evaluate(&self, game_state: DotsAndBoxes) -> f64 {
         let sum: usize = game_state.score.iter().sum();
         if sum == 0 {
             return 0.0;
@@ -375,7 +375,7 @@ mod tests {
         game.current_player = A;
         game.apply_action(Edge(1, 0, W));
         game.current_player = A;
-
-        assert!(ScoreEvaluator::evaluate(game) == 0.1);
+        let e = ScoreEvaluator {};
+        assert!(e.evaluate(game) == 0.1);
     }
 }

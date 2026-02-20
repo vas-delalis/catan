@@ -7,8 +7,9 @@ use burn::{
 use rand::random_ratio;
 
 use crate::{
-    Agent, GameState, Random,
-    games::{Cell, TicTacToe, TicTacToePlayer},
+    Agent, GameState,
+    agents::Random,
+    games::{TicTacToe, TicTacToePlayer},
 };
 
 #[derive(Debug, Clone)]
@@ -18,7 +19,6 @@ pub struct TicTacToeBatch<B: Backend> {
 }
 
 type Player = <TicTacToe as GameState>::Player;
-type Action = <TicTacToe as GameState>::Action;
 type TicTacToeSnapshot = (TicTacToe, Option<Player>);
 
 #[derive(Clone, Default)]

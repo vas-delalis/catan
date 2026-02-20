@@ -7,7 +7,7 @@ use rand_distr::{Distribution, Gamma};
 use crate::{Agent, GameState};
 
 pub trait Evaluator<G: GameState> {
-    fn evaluate(game_state: G) -> f64;
+    fn evaluate(&self, game_state: G) -> f64;
 }
 
 pub struct Node<G: GameState> {
@@ -48,24 +48,24 @@ pub struct Search<G: GameState, E: Evaluator<G>> {
     // alphazero have chosen a number around 10 for that last quantity,
     // so for chess, with its branching factor of ~35, we get alpha = .3
     max_evals: usize,
-    value: f64,
-    _phantom: PhantomData<(G, E)>,
+    evaluator: E,
+    _phantom: PhantomData<G>,
 }
 
 impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     pub fn new(
+        evaluator: E,
         max_evals: usize,
         pb_c_base: f64,
         pb_c_init: f64,
         dirichlet_alpha: f64,
-        value: f64,
     ) -> Self {
         Search {
+            evaluator,
+            max_evals,
             pb_c_base,
             pb_c_init,
             dirichlet_alpha,
-            max_evals,
-            value,
             _phantom: PhantomData,
         }
     }
@@ -88,10 +88,10 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
         let actions = game.get_actions(to_play);
 
-        let value = E::evaluate(game.clone());
+        let value = self.evaluator.evaluate(game.clone());
 
         // Run inference
-        let (_, policy_logits) = (self.value, vec![0f64; actions.len()]);
+        let (_, policy_logits) = (value, vec![0f64; actions.len()]);
         let policy: Vec<f64> = policy_logits.into_iter().map(|l| l.exp()).collect();
         let sum: f64 = policy.iter().sum();
 
