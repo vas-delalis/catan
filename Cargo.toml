@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["agent","catan"]
+members = ["agent", "catan"]
 
 [profile.release]
 lto = true
+debug = true

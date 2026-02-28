@@ -26,7 +26,8 @@ pub struct TicTacToeBatcher {}
 
 impl<B: Backend> Batcher<B, TicTacToeSnapshot, TicTacToeBatch<B>> for TicTacToeBatcher {
     fn batch(&self, items: Vec<TicTacToeSnapshot>, device: &B::Device) -> TicTacToeBatch<B> {
-        // items.iter().map(|replay| replay.choose(&mut rng).unwrap()).map(|(p, a)| )
+        // items.iter().map(|replay| replay.choose(&mut rng).unwrap()).map(|(p, a)| )s
+        let item_count = items.len();
         let mut images = vec![];
         let mut targets = vec![];
         for (state, winner) in items {
@@ -64,14 +65,17 @@ impl<B: Backend> Batcher<B, TicTacToeSnapshot, TicTacToeBatch<B>> for TicTacToeB
             let plane3 = Tensor::<B, 1>::from_floats(plane3, &device).reshape([3, 3]);
             let image = Tensor::stack::<3>(vec![plane1, plane2, plane3], 0);
             images.push(image);
-            targets.push(winner);
+            targets.push(if winner.is_some_and(|w| w == state.current_player()) {
+                1.0
+            } else {
+                -1.0
+            });
         }
 
         let images = Tensor::stack(images, 0);
-
         TicTacToeBatch {
             images,
-            targets: Tensor::<B, 1>::from_floats([1.0], device),
+            targets: Tensor::<B, 1>::from_data(TensorData::new(targets, [item_count]), device),
         }
     }
 }
@@ -109,7 +113,6 @@ pub fn selfplay(dataset: &mut TicTacToeDataset) {
             }
         }
 
-        assert!(game.is_terminal());
         for state in buffer {
             let winner = state.check_winner();
             dataset.replay_buffer.push((state, winner));

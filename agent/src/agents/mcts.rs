@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::time::Instant;
 
 use rand::{rng, seq::index::sample_weighted};
 use rand_distr::{Distribution, Gamma};
@@ -108,6 +109,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         root.played = Some(game_state.current_player());
         self.evaluate(&mut root, &mut game_state); // arbitrary player
         self.add_exploration_noise(&mut root);
+        let mut times = vec![];
 
         for _ in 0..self.max_evals {
             let mut node = &mut root;
@@ -124,7 +126,10 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
                 search_path.push(action);
             }
 
+            let start = Instant::now();
             let value = self.evaluate(node, &scratch);
+            let t = Instant::now().duration_since(start).as_millis() as u64;
+            times.push(t);
             // The correct value is the value from the perspective of the previous player.
 
             // Backpropagate
@@ -164,6 +169,8 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         //     }
         // }
 
+        let sum: u64 = times.into_iter().sum();
+        println!("{}", sum / self.max_evals as u64);
         return self.select_action(&root, false); // TODO: greediness
     }
 

@@ -2,12 +2,12 @@
 
 use agent::{
     Action, Agent, GameState, Player, Tournament,
-    agents::{Evaluator, Random, Search},
+    agents::{ConstantEvaluator, Evaluator, Random, Search},
     games::{
         Cell, DotsAndBoxes, DotsAndBoxesAction as DnbEdge, DotsAndBoxesDir as DnbDir,
         ScoreEvaluator, TicTacToe, TopsideEvaluator,
     },
-    ml::{Model, ModelConfig, TicTacToeBatcher, TrainingConfig, train},
+    ml::{Model, ModelConfig, ModelEvaluator, TicTacToeBatcher, TrainingConfig, train},
 };
 use burn::{
     backend::{
@@ -32,13 +32,6 @@ use burn::{
 //         println!("{:?} {:?}", p, game.outcome(p).unwrap())
 //     }
 // }
-
-struct ConstantEvaluator {}
-impl<G: GameState> Evaluator<G> for ConstantEvaluator {
-    fn evaluate(&self, _: G) -> f64 {
-        0.0
-    }
-}
 
 // fn tournament() {
 //     let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
@@ -109,16 +102,15 @@ impl<G: GameState> Evaluator<G> for ConstantEvaluator {
 // }
 
 pub fn infer<B: Backend>(artifact_dir: &str, device: B::Device) {
-    let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
-        .expect("Config should exist for the model; run train first");
-    let record = CompactRecorder::new()
-        .load(format!("{artifact_dir}/model").into(), &device)
-        .expect("Trained model should exist; run train first");
+    let model = load_model(artifact_dir, device.clone());
+    let evaluator = ModelEvaluator {
+        model,
+        batcher: TicTacToeBatcher {},
+        device,
+    };
 
-    let model = config.model.init::<B>(&device).load_record(record);
-
-    let agent: Box<dyn Agent<TicTacToe>> = Box::new(Search::<TicTacToe, Model<B>>::new(
-        model, 10, 1.41, 1.0, 0.01,
+    let agent: Box<dyn Agent<TicTacToe>> = Box::new(Search::<TicTacToe, ModelEvaluator<B>>::new(
+        evaluator, 10, 1.41, 1.0, 0.01,
     ));
     let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
     agents.push(agent);
@@ -134,22 +126,26 @@ pub fn infer<B: Backend>(artifact_dir: &str, device: B::Device) {
     tournament.leaderboard();
 }
 
+pub fn load_model<B: Backend>(artifact_dir: &str, device: B::Device) -> Model<B> {
+    let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
+        .expect("Config should exist for the model; run train first");
+    let record = CompactRecorder::new()
+        .load(format!("{artifact_dir}/model").into(), &device)
+        .expect("Trained model should exist; run train first");
+
+    config.model.init::<B>(&device).load_record(record)
+}
+
 fn main() {
     type B = LibTorch<f32>;
     type AB = Autodiff<B>;
 
-    let device = LibTorchDevice::Cuda(0);
+    let device = LibTorchDevice::Cpu;
 
     let artifact_dir = "./model";
 
     let model_config = ModelConfig::new(512);
     let model = model_config.init::<B>(&device);
-
-    // train::<AB>(
-    //     artifact_dir,
-    //     TrainingConfig::new(model_config, AdamConfig::new()),
-    //     device.clone(),
-    // );
 
     infer::<AB>(artifact_dir, device.clone());
 }

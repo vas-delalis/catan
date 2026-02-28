@@ -71,13 +71,16 @@ impl<B: Backend> Model<B> {
     }
 }
 
-impl<B: Backend> Evaluator<TicTacToe> for Model<B> {
-    fn evaluate(&self, game_state: TicTacToe) -> f64 {
-        let batcher = TicTacToeBatcher::default();
-        let device = &self.devices()[0];
+pub struct ModelEvaluator<B: Backend> {
+    pub model: Model<B>,
+    pub batcher: TicTacToeBatcher,
+    pub device: B::Device,
+}
 
-        let batch = batcher.batch(vec![(game_state, None)], device);
-        let output = self.forward(batch.images);
+impl<B: Backend> Evaluator<TicTacToe> for ModelEvaluator<B> {
+    fn evaluate(&self, game_state: TicTacToe) -> f64 {
+        let batch = self.batcher.batch(vec![(game_state, None)], &self.device);
+        let output = self.model.forward(batch.images);
         output.into_scalar().to_f64()
     }
 }
