@@ -41,6 +41,7 @@ impl<G: GameState> Node<G> {
 }
 
 pub struct Search<G: GameState, E: Evaluator<G>> {
+    greedy: bool,
     pb_c_base: f64,
     pb_c_init: f64,
     dirichlet_alpha: f64,
@@ -57,11 +58,13 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     pub fn new(
         evaluator: E,
         max_evals: usize,
+        greedy: bool,
         pb_c_base: f64,
         pb_c_init: f64,
         dirichlet_alpha: f64,
     ) -> Self {
         Search {
+            greedy,
             evaluator,
             max_evals,
             pb_c_base,
@@ -170,17 +173,17 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         // }
 
         let sum: u64 = times.into_iter().sum();
-        println!("{}", sum / self.max_evals as u64);
-        return self.select_action(&root, false); // TODO: greediness
+        // println!("{}", sum / self.max_evals as u64);
+        return self.select_action(&root, self.greedy); // TODO: greediness
     }
 
     fn select_action(&self, root: &Node<G>, greedy: bool) -> G::Action {
-        let visit_counts = root.children.iter().map(|(&a, v)| (v.visits, a)).collect();
-        // TODO: parameterize
+        let visit_counts: Vec<(u16, <G as GameState>::Action)> =
+            root.children.iter().map(|(&a, v)| (v.visits, a)).collect();
         if greedy {
-            return softmax_sample(visit_counts);
+            return visit_counts.iter().max_by_key(|(c, _)| c).unwrap().1;
         }
-        visit_counts.iter().max_by_key(|(c, _)| c).unwrap().1
+        softmax_sample(visit_counts)
     }
 
     fn select_child<'a>(&self, node: &'a Node<G>) -> (G::Action, &'a Box<Node<G>>) {

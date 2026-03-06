@@ -110,13 +110,14 @@ pub fn infer<B: Backend>(artifact_dir: &str, device: B::Device) {
     };
 
     let agent: Box<dyn Agent<TicTacToe>> = Box::new(Search::<TicTacToe, ModelEvaluator<B>>::new(
-        evaluator, 10, 1.41, 1.0, 0.01,
+        evaluator, 10, true, 1.41, 1.0, 0.01,
     ));
     let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
     agents.push(agent);
     agents.push(Box::new(Search::<TicTacToe, ConstantEvaluator>::new(
         ConstantEvaluator {},
         10,
+        true,
         1.41,
         1.0,
         0.01,

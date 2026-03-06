@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -128,12 +129,12 @@ impl<G: GameState> Tournament<G> {
 
     /// Runs a sequential probability ratio test for a two-agent match-up with the given scoreline.
     fn termination_test(&self, wins: usize, draws: usize, losses: usize) -> Option<TestResult> {
-        let alpha = 0.05;
-        let beta = 0.05;
+        let alpha = 0.001;
+        let beta = 0.001;
         let upper = f64::ln((1.0 - beta) / alpha);
         let lower = f64::ln(beta / (1.0 - alpha));
         let ratio = log_likelihood_ratio(wins, draws, losses);
-
+        // dbg!(ratio);
         if ratio > upper {
             return Some(TestResult::H1);
         }
@@ -173,7 +174,6 @@ impl<G: GameState> Tournament<G> {
             }
 
             let (outcome, score) = game.outcome(players[0]).unwrap();
-            // dbg!(outcome, participants[0].0);
 
             match outcome {
                 Outcome::Win => {
@@ -205,7 +205,7 @@ impl<G: GameState> Tournament<G> {
             if self.roster.len() > 0 {
                 let scoreline = &self.scorelines[i][j];
                 if let Some(result) =
-                    self.termination_test(scoreline.wins, scoreline.draws, scoreline.losses)
+                    self.termination_test(scoreline.wins, max(scoreline.draws, 1), scoreline.losses)
                 {
                     self.test_results[i][j] = Some(result);
                     matchups.remove(&(i, j));
