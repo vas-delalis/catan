@@ -1,8 +1,9 @@
 use agent::{
-    Agent, GameState,
+    Agent,
+    GameState,
     agents::{Evaluator, Random},
     games::TicTacToe,
-    ml::{Model, TrainingConfig},
+    // ml::{Model, TrainingConfig},
 };
 use burn::{
     backend::{Autodiff, LibTorch, libtorch::LibTorchDevice},
@@ -13,15 +14,15 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use rand::random_range;
 use std::hint::black_box;
 
-fn load_model<B: Backend>(artifact_dir: &str, device: B::Device) -> Model<B> {
-    let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
-        .expect("Config should exist for the model; run train first");
-    let record = CompactRecorder::new()
-        .load(format!("{artifact_dir}/model").into(), &device)
-        .expect("Trained model should exist; run train first");
+// fn load_model<B: Backend>(artifact_dir: &str, device: B::Device) -> Model<B> {
+//     let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
+//         .expect("Config should exist for the model; run train first");
+//     let record = CompactRecorder::new()
+//         .load(format!("{artifact_dir}/model").into(), &device)
+//         .expect("Trained model should exist; run train first");
 
-    config.model.init::<B>(&device).load_record(record)
-}
+//     config.model.init::<B>(&device).load_record(record)
+// }
 
 fn random_state() -> TicTacToe {
     let agent = Random {};

@@ -8,6 +8,7 @@ pub use random::Random;
 
 use crate::GameState;
 
+#[derive(Clone)]
 pub struct ConstantEvaluator {}
 impl<G: GameState> Evaluator<G> for ConstantEvaluator {
     fn evaluate(&self, _: G) -> f64 {

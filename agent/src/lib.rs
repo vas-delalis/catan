@@ -48,8 +48,8 @@ pub trait MultiplayerGameState: GameState {
     ) -> Option<(Outcome, f64)>;
 }
 
-pub struct Tournament<G> {
-    roster: Vec<Participant<G>>,
+pub struct Tournament<'a, G> {
+    roster: Vec<Participant<'a, G>>,
     scorelines: Vec<Vec<Scoreline>>,
     test_results: Vec<Vec<Option<TestResult>>>,
 }
@@ -61,9 +61,9 @@ struct Scoreline {
     losses: usize,
 }
 
-struct Participant<G> {
+struct Participant<'a, G> {
     id: usize,
-    agent: Box<dyn Agent<G>>,
+    agent: Box<dyn Agent<G> + 'a>,
     rating: f64,
     wins: usize,
     draws: usize,
@@ -97,8 +97,8 @@ enum TestResult {
     H1,
 }
 
-impl<G: GameState> Tournament<G> {
-    pub fn new(agents: Vec<Box<dyn Agent<G>>>) -> Self {
+impl<'a, G: GameState> Tournament<'a, G> {
+    pub fn new(agents: Vec<Box<dyn Agent<G> + 'a>>) -> Self {
         Tournament {
             scorelines: vec![
                 vec![
@@ -129,8 +129,8 @@ impl<G: GameState> Tournament<G> {
 
     /// Runs a sequential probability ratio test for a two-agent match-up with the given scoreline.
     fn termination_test(&self, wins: usize, draws: usize, losses: usize) -> Option<TestResult> {
-        let alpha = 0.001;
-        let beta = 0.001;
+        let alpha = 0.01;
+        let beta = 0.01;
         let upper = f64::ln((1.0 - beta) / alpha);
         let lower = f64::ln(beta / (1.0 - alpha));
         let ratio = log_likelihood_ratio(wins, draws, losses);
@@ -245,7 +245,7 @@ impl<G: GameState> Tournament<G> {
     }
 }
 
-impl<G: MultiplayerGameState> Tournament<G> {
+impl<'a, G: MultiplayerGameState> Tournament<'a, G> {
     pub fn play_multiplayer(&mut self) {
         let mut game_count: usize = 0;
         let mut result_count = 0;

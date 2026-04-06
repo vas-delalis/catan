@@ -1,179 +1,141 @@
-use burn::{
-    backend::LibTorch,
-    data::dataloader::DataLoaderBuilder,
-    nn::loss::MseLoss,
-    optim::AdamConfig,
-    prelude::*,
-    record::CompactRecorder,
-    tensor::{Transaction, backend::AutodiffBackend},
-    train::{
-        InferenceStep, ItemLazy, Learner, SupervisedTraining, TrainOutput, TrainStep,
-        metric::{Adaptor, LossInput, LossMetric},
-    },
+use rand::seq::IteratorRandom;
+use tch::{
+    Tensor,
+    nn::{self, OptimizerConfig},
 };
 
-use crate::ml::{
-    data::{TicTacToeBatch, TicTacToeBatcher, TicTacToeDataset, selfplay},
-    model::{Model, ModelConfig},
+use crate::{
+    Agent, GameState, Tournament,
+    agents::{ConstantEvaluator, Evaluator, Search},
+    games::{Cell, TicTacToe, TicTacToePlayer},
+    ml::{self, Model, data::Dataset},
 };
 
-pub struct RegressionOutput1d<B: Backend> {
-    pub loss: Tensor<B, 1>,
-    pub output: Tensor<B, 1>,
-    pub targets: Tensor<B, 1>,
+#[derive(Clone)]
+struct ModelEvaluator<'a> {
+    net: &'a Model<'a>,
 }
 
-impl<B: Backend> RegressionOutput1d<B> {
-    fn new(loss: Tensor<B, 1>, output: Tensor<B, 1>, targets: Tensor<B, 1>) -> Self {
-        RegressionOutput1d {
-            loss,
-            output,
-            targets,
+impl<'a> Evaluator<TicTacToe> for ModelEvaluator<'a> {
+    fn evaluate(&self, game_state: TicTacToe) -> f64 {
+        let image = batch(&game_state);
+        (self.net)(&image).try_into().unwrap()
+    }
+}
+
+fn batch(game_state: &TicTacToe) -> Tensor {
+    use crate::GameState;
+    let mut plane1: Vec<f32> = vec![];
+    let mut plane2: Vec<f32> = vec![];
+    let plane3: Vec<f32> = if game_state.current_player() == TicTacToePlayer::X {
+        vec![1.0; 1]
+    } else {
+        vec![0.0; 1]
+    };
+
+    for tile in game_state.board {
+        match tile {
+            Some(p) => {
+                if p == TicTacToePlayer::X {
+                    plane1.push(1.0);
+                    plane2.push(0.0);
+                } else {
+                    plane1.push(0.0);
+                    plane2.push(1.0);
+                }
+            }
+            None => {
+                plane1.push(0.0);
+                plane2.push(0.0);
+            }
         }
     }
+    let plane1 = Tensor::from_slice(&plane1);
+    let plane2 = Tensor::from_slice(&plane2);
+    let plane3 = Tensor::from_slice(&plane3); //.reshape([3, 3]);
+
+    Tensor::cat(&[plane1, plane2, plane3], 0)
 }
 
-impl<B: Backend> ItemLazy for RegressionOutput1d<B> {
-    type ItemSync = RegressionOutput1d<LibTorch>;
+pub fn train() {
+    let device = tch::Device::Cpu;
+    let vs = nn::VarStore::new(device);
+    let root = vs.root();
+    let mut opt = nn::Adam::default().build(&vs, 1e-3).unwrap();
 
-    fn sync(self) -> Self::ItemSync {
-        let [output, loss, targets] = Transaction::default()
-            .register(self.output)
-            .register(self.loss)
-            .register(self.targets)
-            .execute()
-            .try_into()
-            .expect("Correct amount of tensor data");
+    let model = ml::create_model(&root);
+    let evaluator = ModelEvaluator { net: &model };
+    let agent =
+        Search::<TicTacToe, ModelEvaluator>::new(evaluator.clone(), 100, false, 1.41, 1.0, 0.01);
+    let reference_agent = Search::<TicTacToe, ConstantEvaluator>::new(
+        ConstantEvaluator {},
+        100,
+        false,
+        1.41,
+        1.0,
+        0.01,
+    );
 
-        let device = &Default::default();
+    let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
+    agents.push(Box::new(reference_agent.clone()));
+    agents.push(Box::new(agent.clone()));
+    let mut tournament = Tournament::new(agents);
+    tournament.play();
+    tournament.leaderboard();
 
-        RegressionOutput1d {
-            output: Tensor::from_data(output, device),
-            loss: Tensor::from_data(loss, device),
-            targets: Tensor::from_data(targets, device),
+    for epoch in 1..=10 {
+        let mut dataset_train = Dataset::new();
+        let mut dataset_test = Dataset::new();
+        dataset_train.selfplay(&agent);
+        dataset_test.selfplay(&agent);
+
+        // Train
+        for _ in 1..=1000 {
+            let index = (0..dataset_train.len()).choose(&mut rand::rng()).unwrap();
+            let (state, value) = dataset_train.get(index);
+            let x = batch(&state);
+            let y = Tensor::from(value as f32);
+            let loss = model(&x).mse_loss(&y, tch::Reduction::Mean);
+            opt.backward_step(&loss);
         }
+
+        // Test
+        let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
+        let mut test_losses = vec![];
+        for _ in 1..=100 {
+            let index = (0..dataset_test.len()).choose(&mut rand::rng()).unwrap();
+            let (state, value) = dataset_test.get(index);
+            let x = batch(&state);
+            let y = Tensor::from(value as f32);
+            let loss = model(&x).mse_loss(&y, tch::Reduction::Mean);
+            let loss: f32 = loss.try_into().unwrap();
+            test_losses.push(loss);
+        }
+
+        let n = test_losses.len();
+        let sum: f32 = test_losses.iter().sum();
+        println!("[Test - Epoch {}] Loss {:.3}", epoch, sum / n as f32);
     }
-}
 
-impl<B: Backend> Adaptor<LossInput<B>> for RegressionOutput1d<B> {
-    fn adapt(&self) -> LossInput<B> {
-        LossInput::new(self.loss.clone())
-    }
-}
+    let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
+    agents.push(Box::new(reference_agent));
+    agents.push(Box::new(agent.clone()));
+    let mut tournament = Tournament::new(agents);
+    tournament.play();
+    tournament.leaderboard();
 
-// impl<B: Autodiff<Backend>> Adaptor<LossInput<B>> for RegressionOutput1d<B> {
-//     fn adapt(&self) -> LossInput<B> {
-//         LossInput::new(self.loss.clone())
-//     }
-// }
+    let mut game = TicTacToe::new();
+    dbg!(evaluator.evaluate(game.clone()));
 
-impl<B: Backend> Model<B> {
-    pub fn forward_regression(
-        &self,
-        images: Tensor<B, 4>,
-        targets: Tensor<B, 1>,
-    ) -> RegressionOutput1d<B> {
-        let output = self.forward(images);
-        let loss =
-            MseLoss::new().forward(output.clone(), targets.clone(), nn::loss::Reduction::Auto);
+    game.apply_action(Cell(0));
+    dbg!(evaluator.evaluate(game.clone()));
 
-        RegressionOutput1d::new(loss, output, targets)
-    }
-}
+    game.apply_action(Cell(8));
+    dbg!(evaluator.evaluate(game.clone()));
 
-impl<B: AutodiffBackend> TrainStep for Model<B> {
-    type Input = TicTacToeBatch<B>;
-    type Output = RegressionOutput1d<B>;
+    game.apply_action(Cell(1));
+    dbg!(evaluator.evaluate(game.clone()));
 
-    fn step(&self, batch: TicTacToeBatch<B>) -> TrainOutput<RegressionOutput1d<B>> {
-        let item = self.forward_regression(batch.images, batch.targets);
-
-        TrainOutput::new(self, item.loss.backward(), item)
-    }
-}
-
-impl<B: Backend> InferenceStep for Model<B> {
-    type Input = TicTacToeBatch<B>;
-    type Output = RegressionOutput1d<B>;
-
-    fn step(&self, batch: TicTacToeBatch<B>) -> RegressionOutput1d<B> {
-        self.forward_regression(batch.images, batch.targets)
-    }
-}
-
-#[derive(Config, Debug)]
-pub struct TrainingConfig {
-    pub model: ModelConfig,
-    pub optimizer: AdamConfig,
-    #[config(default = 10)]
-    pub num_epochs: usize,
-    #[config(default = 64)]
-    pub batch_size: usize,
-    #[config(default = 4)]
-    pub num_workers: usize,
-    #[config(default = 42)]
-    pub seed: u64,
-    #[config(default = 1.0e-4)]
-    pub learning_rate: f64,
-}
-
-fn create_artifact_dir(artifact_dir: &str) {
-    // Remove existing artifacts before to get an accurate learner summary
-    std::fs::remove_dir_all(artifact_dir).ok();
-    std::fs::create_dir_all(artifact_dir).ok();
-}
-
-pub fn train<B: AutodiffBackend>(artifact_dir: &str, config: TrainingConfig, device: B::Device)
-// where
-//     RegressionOutput1d<<B as AutodiffBackend>::InnerBackend>: Adaptor<LossInput<B>>,
-{
-    create_artifact_dir(artifact_dir);
-    config
-        .save(format!("{artifact_dir}/config.json"))
-        .expect("Config should be saved successfully");
-
-    B::seed(&device, config.seed);
-
-    let batcher = TicTacToeBatcher::default();
-    // let items = vec![(TicTacToeDataset {}).get(0).unwrap()];
-    // let batch = <TicTacToeBatcher as Batcher<B, TicTacToeItem, TicTacToeBatch<B>>>::batch(
-    //     &batcher, items, &device,
-    // );
-    // dbg!(batch.images.shape());
-
-    let mut dataset_train = TicTacToeDataset::new();
-    selfplay(&mut dataset_train);
-
-    let mut dataset_test = TicTacToeDataset::new();
-    selfplay(&mut dataset_test);
-
-    let dataloader_train = DataLoaderBuilder::new(batcher.clone())
-        .batch_size(config.batch_size)
-        .shuffle(config.seed)
-        .num_workers(config.num_workers)
-        .build(dataset_train);
-
-    let dataloader_test = DataLoaderBuilder::new(batcher)
-        .batch_size(config.batch_size)
-        .shuffle(config.seed)
-        .num_workers(config.num_workers)
-        .build(dataset_test);
-
-    let training = SupervisedTraining::new(artifact_dir, dataloader_train, dataloader_test)
-        .metrics((LossMetric::new(),))
-        .with_file_checkpointer(CompactRecorder::new())
-        .num_epochs(config.num_epochs)
-        .summary();
-
-    let model = config.model.init::<B>(&device);
-    let result = training.launch(Learner::new(
-        model,
-        config.optimizer.init(),
-        config.learning_rate,
-    ));
-
-    result
-        .model
-        .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
-        .expect("Trained model should be saved successfully");
+    game.apply_action(Cell(7));
+    dbg!(evaluator.evaluate(game.clone()));
 }

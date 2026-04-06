@@ -40,6 +40,7 @@ impl<G: GameState> Node<G> {
     }
 }
 
+#[derive(Clone)]
 pub struct Search<G: GameState, E: Evaluator<G>> {
     greedy: bool,
     pb_c_base: f64,
@@ -172,7 +173,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         //     }
         // }
 
-        let sum: u64 = times.into_iter().sum();
+        // let sum: u64 = times.into_iter().sum();
         // println!("{}", sum / self.max_evals as u64);
         return self.select_action(&root, self.greedy); // TODO: greediness
     }
