@@ -4,12 +4,14 @@ type Snapshot<G> = (G, f64);
 
 pub struct Dataset<G: GameState> {
     replay_buffer: Vec<Snapshot<G>>,
+    replay_count: usize,
 }
 
 impl<G: GameState> Dataset<G> {
-    pub fn new() -> Self {
+    pub fn new(replay_count: usize) -> Self {
         Dataset {
             replay_buffer: vec![],
+            replay_count,
         }
     }
 
@@ -22,7 +24,7 @@ impl<G: GameState> Dataset<G> {
     }
 
     pub fn selfplay(&mut self, agent: &dyn Agent<G>) {
-        while self.len() < 1000 {
+        while self.len() < self.replay_count {
             let mut game = G::new();
             let mut buffer = vec![];
             while !game.is_terminal() {

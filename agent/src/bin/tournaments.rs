@@ -32,7 +32,7 @@ fn main() {
         0.01,
     )));
 
-    let mut tournament: Tournament<OddsGame> = Tournament::new(agents);
+    let mut tournament: Tournament<OddsGame> = Tournament::new(agents, 1e-2, 1e-2);
     tournament.play();
     tournament.leaderboard();
 }

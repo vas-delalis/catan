@@ -52,6 +52,8 @@ pub struct Tournament<'a, G> {
     roster: Vec<Participant<'a, G>>,
     scorelines: Vec<Vec<Scoreline>>,
     test_results: Vec<Vec<Option<TestResult>>>,
+    false_positive_rate: f64,
+    false_negative_rate: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -98,7 +100,11 @@ enum TestResult {
 }
 
 impl<'a, G: GameState> Tournament<'a, G> {
-    pub fn new(agents: Vec<Box<dyn Agent<G> + 'a>>) -> Self {
+    pub fn new(
+        agents: Vec<Box<dyn Agent<G> + 'a>>,
+        false_positive_rate: f64,
+        false_negative_rate: f64,
+    ) -> Self {
         Tournament {
             scorelines: vec![
                 vec![
@@ -124,13 +130,15 @@ impl<'a, G: GameState> Tournament<'a, G> {
                     losses: 0,
                 })
                 .collect(),
+            false_positive_rate,
+            false_negative_rate,
         }
     }
 
     /// Runs a sequential probability ratio test for a two-agent match-up with the given scoreline.
     fn termination_test(&self, wins: usize, draws: usize, losses: usize) -> Option<TestResult> {
-        let alpha = 0.01;
-        let beta = 0.01;
+        let alpha = self.false_positive_rate;
+        let beta = self.false_negative_rate;
         let upper = f64::ln((1.0 - beta) / alpha);
         let lower = f64::ln(beta / (1.0 - alpha));
         let ratio = log_likelihood_ratio(wins, draws, losses);

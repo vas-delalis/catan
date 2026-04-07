@@ -3,4 +3,4 @@ mod model;
 mod training;
 
 pub use model::{Model, create_model};
-pub use training::train;
+pub use training::{TrainingConfig, train};

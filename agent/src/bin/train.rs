@@ -1,22 +1,11 @@
-use agent::ml::train;
-// use burn::{
-//     backend::{Autodiff, LibTorch, libtorch::LibTorchDevice},
-//     optim::AdamConfig,
-// };
+use agent::ml::{TrainingConfig, train};
 
 fn main() {
-    // type B = LibTorch<f32>;
-    // type AB = Autodiff<B>;
-
-    // let device = LibTorchDevice::Cpu;
-    // let artifact_dir = "./model";
-    // let model_config = ModelConfig::new(1);
-
-    train();
-
-    // train::<AB>(
-    //     artifact_dir,
-    //     TrainingConfig::new(model_config, AdamConfig::new()),
-    //     device.clone(),
-    // );
+    train(TrainingConfig {
+        epochs: 10,
+        train_iters: 1000,
+        test_iters: 100,
+        replay_count: 1_000,
+        learning_rate: 1e-3,
+    });
 }
