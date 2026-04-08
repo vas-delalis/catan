@@ -5,57 +5,15 @@ use tch::{
 };
 
 use crate::{
-    Agent, GameState, Tournament,
-    agents::{ConstantEvaluator, Evaluator, Search},
-    games::{Cell, TicTacToe, TicTacToePlayer},
-    ml::{self, Model, data::Dataset},
+    Agent, Tournament,
+    agents::{ConstantEvaluator, Search},
+    games::TicTacToe,
+    ml::{
+        self,
+        data::Dataset,
+        model::{ModelEvaluator, batch},
+    },
 };
-
-#[derive(Clone)]
-struct ModelEvaluator<'a> {
-    net: &'a Model<'a>,
-}
-
-impl<'a> Evaluator<TicTacToe> for ModelEvaluator<'a> {
-    fn evaluate(&self, game_state: TicTacToe) -> f64 {
-        let image = batch(&game_state);
-        (self.net)(&image).try_into().unwrap()
-    }
-}
-
-fn batch(game_state: &TicTacToe) -> Tensor {
-    use crate::GameState;
-    let mut plane1: Vec<f32> = vec![];
-    let mut plane2: Vec<f32> = vec![];
-    let plane3: Vec<f32> = if game_state.current_player() == TicTacToePlayer::X {
-        vec![1.0; 1]
-    } else {
-        vec![0.0; 1]
-    };
-
-    for tile in game_state.board {
-        match tile {
-            Some(p) => {
-                if p == TicTacToePlayer::X {
-                    plane1.push(1.0);
-                    plane2.push(0.0);
-                } else {
-                    plane1.push(0.0);
-                    plane2.push(1.0);
-                }
-            }
-            None => {
-                plane1.push(0.0);
-                plane2.push(0.0);
-            }
-        }
-    }
-    let plane1 = Tensor::from_slice(&plane1);
-    let plane2 = Tensor::from_slice(&plane2);
-    let plane3 = Tensor::from_slice(&plane3); //.reshape([3, 3]);
-
-    Tensor::cat(&[plane1, plane2, plane3], 0)
-}
 
 pub struct TrainingConfig {
     pub epochs: usize,
@@ -73,18 +31,10 @@ pub fn train(config: TrainingConfig) {
         .build(&vs, config.learning_rate)
         .unwrap();
 
-    let model = ml::create_model(&root);
-    let evaluator = ModelEvaluator { net: &model };
-    let agent =
-        Search::<TicTacToe, ModelEvaluator>::new(evaluator.clone(), 100, false, 1.41, 1.0, 0.01);
-    let reference_agent = Search::<TicTacToe, ConstantEvaluator>::new(
-        ConstantEvaluator {},
-        100,
-        false,
-        1.41,
-        1.0,
-        0.01,
-    );
+    let model = ml::create_model(&root, 4);
+    let evaluator = ModelEvaluator { model: &model };
+    let agent = Search::new(evaluator.clone(), 100, false, 1.41, 1.0, 0.01);
+    let reference_agent = Search::new(ConstantEvaluator {}, 100, false, 1.41, 1.0, 0.01);
 
     let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
     agents.push(Box::new(reference_agent.clone()));
@@ -128,24 +78,11 @@ pub fn train(config: TrainingConfig) {
     }
 
     let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
-    agents.push(Box::new(reference_agent));
+    agents.push(Box::new(reference_agent.clone()));
     agents.push(Box::new(agent.clone()));
     let mut tournament = Tournament::new(agents, 1e-2, 1e-2);
     tournament.play();
     tournament.leaderboard();
 
-    let mut game = TicTacToe::new();
-    dbg!(evaluator.evaluate(game.clone()));
-
-    game.apply_action(Cell(0));
-    dbg!(evaluator.evaluate(game.clone()));
-
-    game.apply_action(Cell(8));
-    dbg!(evaluator.evaluate(game.clone()));
-
-    game.apply_action(Cell(1));
-    dbg!(evaluator.evaluate(game.clone()));
-
-    game.apply_action(Cell(7));
-    dbg!(evaluator.evaluate(game.clone()));
+    vs.save("model.safetensors").unwrap();
 }
