@@ -8,11 +8,7 @@ use crate::{
     Agent, Tournament,
     agents::{ConstantEvaluator, Search},
     games::TicTacToe,
-    ml::{
-        self,
-        data::Dataset,
-        model::{ModelEvaluator, batch},
-    },
+    ml::{self, Batch, data::Dataset, model::ModelEvaluator},
 };
 
 pub struct TrainingConfig {
@@ -53,7 +49,7 @@ pub fn train(config: TrainingConfig) {
         for _ in 1..=config.train_iters {
             let index = (0..dataset_train.len()).choose(&mut rand::rng()).unwrap();
             let (state, value) = dataset_train.get(index);
-            let x = batch(&state);
+            let x = state.batch();
             let y = Tensor::from(value as f32);
             let loss = model(&x).mse_loss(&y, tch::Reduction::Mean);
             opt.backward_step(&loss);
@@ -65,7 +61,7 @@ pub fn train(config: TrainingConfig) {
         for _ in 1..=config.test_iters {
             let index = (0..dataset_test.len()).choose(&mut rand::rng()).unwrap();
             let (state, value) = dataset_test.get(index);
-            let x = batch(&state);
+            let x = state.batch();
             let y = Tensor::from(value as f32);
             let loss = model(&x).mse_loss(&y, tch::Reduction::Mean);
             let loss: f32 = loss.try_into().unwrap();
