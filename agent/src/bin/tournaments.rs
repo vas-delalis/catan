@@ -46,7 +46,7 @@ fn main() {
     let evaluator = ModelEvaluator { model: &model };
 
     let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
-    agents.push(Box::new(Search::<TicTacToe, ModelEvaluator>::new(
+    agents.push(Box::new(Search::new(
         evaluator.clone(),
         10000,
         true,
@@ -54,7 +54,7 @@ fn main() {
         1.0,
         0.01,
     )));
-    agents.push(Box::new(Search::<TicTacToe, ModelEvaluator>::new(
+    agents.push(Box::new(Search::new(
         evaluator.clone(),
         10000,
         true,
@@ -63,7 +63,7 @@ fn main() {
         0.01,
     )));
 
-    let mut tournament: Tournament<TicTacToe> = Tournament::new(agents, 1e-2, 1e-2);
+    let mut tournament = Tournament::new(agents, 1e-2, 1e-2);
     tournament.play();
     tournament.leaderboard();
 }
