@@ -36,6 +36,7 @@ pub trait GameState: Clone {
     fn get_actions(&self, player: Self::Player) -> Vec<Self::Action>;
     fn apply_action(&mut self, action: Self::Action);
     fn current_player(&self) -> Self::Player;
+    fn prev_player(&self) -> Self::Player;
     fn is_terminal(&self) -> bool;
     fn outcome(&self, player: Self::Player) -> Option<(Outcome, f64)>;
 }
@@ -255,16 +256,9 @@ impl<'a, G: GameState> Tournament<'a, G> {
 
 impl<'a, G: MultiplayerGameState> Tournament<'a, G> {
     pub fn play_multiplayer(&mut self) {
-        let mut game_count: usize = 0;
         let mut result_count = 0;
         let matchup_count = 12;
         while result_count < matchup_count {
-            game_count += 1;
-            if game_count % 10000 == 0 {
-                dbg!(&self.scorelines[3][0]);
-                dbg!(&self.scorelines[3][1]);
-                dbg!(&self.scorelines[3][2]);
-            }
             let mut players = G::Player::list();
             players.shuffle(&mut rng());
 

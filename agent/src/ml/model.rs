@@ -4,9 +4,14 @@ use crate::{agents::Evaluator, ml::Batch};
 
 pub type Model<'a> = Box<dyn Fn(&Tensor) -> Tensor + 'a>;
 
-pub fn create_model<'a>(vs: &nn::Path, hidden: i64) -> Model<'a> {
+pub fn create_model<'a, G: Batch>(vs: &nn::Path, hidden: i64) -> Model<'a> {
     let seq = nn::seq()
-        .add(nn::linear(vs / "layer1", 19, hidden, Default::default()))
+        .add(nn::linear(
+            vs / "layer1",
+            G::BATCH_DIM,
+            hidden,
+            Default::default(),
+        ))
         .add_fn(|xs| xs.relu())
         .add(nn::linear(vs, hidden, 1, Default::default()));
     Box::new(move |xs| xs.apply(&seq))

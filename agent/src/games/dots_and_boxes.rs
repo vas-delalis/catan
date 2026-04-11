@@ -1,16 +1,18 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash};
+use std::{collections::HashSet, fmt::Display, hash::Hash};
 
-use crate::{GameState, MultiplayerGameState, Outcome, Player as PlayerTrait, agents::Evaluator};
+use crate::{
+    GameState, MultiplayerGameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Batch,
+};
 
-const WIDTH: usize = 2;
+const WIDTH: usize = 3;
 const HEIGHT: usize = 3;
 const N_EDGES: usize = 2 * WIDTH * HEIGHT + WIDTH + HEIGHT;
 
 #[derive(Clone)]
 pub struct DotsAndBoxes {
-    pub board: HashMap<Edge, Player>,
+    pub board: HashSet<Edge>,
     current_player: Player,
-    score: [usize; 4],
+    pub score: [usize; 4],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +37,7 @@ pub enum Dir {
 
 use Dir::*;
 use Player::*;
+use tch::Tensor;
 
 pub struct Box(i8, i8);
 
@@ -120,7 +123,7 @@ impl GameState for DotsAndBoxes {
 
     fn new() -> Self {
         DotsAndBoxes {
-            board: HashMap::with_capacity(N_EDGES),
+            board: HashSet::with_capacity(N_EDGES),
             current_player: A,
             score: [0, 0, 0, 0],
         }
@@ -132,7 +135,7 @@ impl GameState for DotsAndBoxes {
             for y in -1..=(HEIGHT as i8 + 1) {
                 for dir in [N, W] {
                     let e = Edge(x as i8, y as i8, dir);
-                    if e.in_bounds() && !self.board.contains_key(&e) {
+                    if e.in_bounds() && !self.board.contains(&e) {
                         edges.push(e);
                     }
                 }
@@ -145,16 +148,24 @@ impl GameState for DotsAndBoxes {
         self.current_player
     }
 
+    fn prev_player(&self) -> Self::Player {
+        match self.current_player {
+            A => D,
+            B => A,
+            C => B,
+            D => C,
+        }
+    }
+
     fn apply_action(&mut self, e: Edge) {
-        // let Edge(x, y, dir) = e;
-        self.board.insert(e.clone(), self.current_player);
+        self.board.insert(e.clone());
         let [box1, box2] = e.boxes();
         let boxes = [box1.edges(), box2.edges()];
         let mut end_turn = true;
         for b in boxes {
             if b.into_iter()
                 .map(|e| self.board.get(&e))
-                .all(|o| o.is_some_and(|&p| p == self.current_player))
+                .all(|o| o.is_some())
             {
                 self.score[self.current_player as usize] += 1;
                 end_turn = false;
@@ -173,6 +184,9 @@ impl GameState for DotsAndBoxes {
         }
         let winners = self.winners().unwrap();
         if winners.contains(&player) {
+            if winners.len() > 1 {
+                return Some((Draw, 1.0 / winners.len() as f64));
+            }
             return Some((Win, 1.0));
         } else {
             return Some((Loss, 0.0));
@@ -214,15 +228,9 @@ impl Display for DotsAndBoxes {
             for x in 0..w {
                 grid.push('.');
                 let e = Edge(x, y, N);
-                if let Some(player) = self.board.get(&e) {
-                    let ch = match player {
-                        A => 'A',
-                        B => 'B',
-                        C => 'C',
-                        D => 'D',
-                    };
+                if let Some(_) = self.board.get(&e) {
                     grid.push('-');
-                    grid.push(ch);
+                    grid.push('-');
                     grid.push('-');
                 } else {
                     grid.push_str("   ");
@@ -235,14 +243,8 @@ impl Display for DotsAndBoxes {
             if y < h {
                 for x in 0..=w {
                     let e = Edge(x, y, W);
-                    if let Some(player) = self.board.get(&e) {
-                        let ch = match player {
-                            A => 'A',
-                            B => 'B',
-                            C => 'C',
-                            D => 'D',
-                        };
-                        grid.push(ch);
+                    if let Some(_) = self.board.get(&e) {
+                        grid.push('|');
                     } else {
                         grid.push(' ');
                     }
@@ -259,17 +261,42 @@ impl Display for DotsAndBoxes {
     }
 }
 
-pub struct TopsideEvaluator {}
-impl Evaluator<DotsAndBoxes> for TopsideEvaluator {
-    fn evaluate(&self, game_state: DotsAndBoxes) -> f64 {
-        let limit = ((WIDTH + 1) / 2) as i8;
-        let all_topside = game_state
-            .board
-            .iter()
-            .all(|(&e, &p)| p != game_state.current_player() || e.1 < limit);
-        if all_topside { 1.0 } else { 0.0 }
+impl Batch for DotsAndBoxes {
+    const BATCH_DIM: i64 = N_EDGES as i64 + 4;
+
+    fn batch(&self) -> tch::Tensor {
+        let mut planes = vec![0f32; N_EDGES];
+
+        let mut count = 0;
+        for x in -1..=(WIDTH as i8 + 1) {
+            for y in -1..=(HEIGHT as i8 + 1) {
+                for dir in [N, W] {
+                    let e = Edge(x as i8, y as i8, dir);
+                    if e.in_bounds() && self.board.contains(&e) {
+                        planes[count] = 1.0;
+                        count += 1;
+                    }
+                }
+            }
+        }
+        let mut to_play = vec![0f32; 4];
+        to_play[self.current_player as usize] = 1.0;
+
+        Tensor::from_slice(&[planes, to_play].concat())
     }
 }
+
+// pub struct TopsideEvaluator {}
+// impl Evaluator<DotsAndBoxes> for TopsideEvaluator {
+//     fn evaluate(&self, game_state: DotsAndBoxes) -> f64 {
+//         let limit = ((WIDTH + 1) / 2) as i8;
+//         let all_topside = game_state
+//             .board
+//             .iter()
+//             .all(|(&e, &p)| p != game_state.current_player() || e.1 < limit);
+//         if all_topside { 1.0 } else { 0.0 }
+//     }
+// }
 
 pub struct ScoreEvaluator {}
 impl Evaluator<DotsAndBoxes> for ScoreEvaluator {

@@ -1,7 +1,8 @@
 use rand::{random_range, random_ratio};
 use std::cmp::{max, min};
+use tch::Tensor;
 
-use crate::{GameState, Outcome, Player, agents::Evaluator};
+use crate::{GameState, Outcome, Player, agents::Evaluator, ml::Batch};
 
 const DENOMINATOR: u32 = 100;
 
@@ -60,6 +61,14 @@ impl GameState for OddsGame {
         self.to_play
     }
 
+    fn prev_player(&self) -> Self::Player {
+        if self.to_play == OddsGamePlayer::A {
+            OddsGamePlayer::B
+        } else {
+            OddsGamePlayer::A
+        }
+    }
+
     fn get_actions(&self, player: Self::Player) -> Vec<Self::Action> {
         assert!(player == self.to_play);
         let mut actions = vec![];
@@ -82,6 +91,17 @@ impl GameState for OddsGame {
             Some(winner) if winner == player => Some((Outcome::Win, 1.0)),
             Some(_) => Some((Outcome::Loss, -1.0)),
         }
+    }
+}
+
+impl Batch for OddsGame {
+    const BATCH_DIM: i64 = 3;
+    fn batch(&self) -> tch::Tensor {
+        Tensor::from_slice(&[
+            self.w as f32,
+            self.l as f32,
+            if self.current_player() == A { 1.0 } else { 0.0 },
+        ])
     }
 }
 

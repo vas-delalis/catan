@@ -9,5 +9,6 @@ pub use training::{TrainingConfig, train};
 use crate::GameState;
 
 pub trait Batch: GameState {
+    const BATCH_DIM: i64;
     fn batch(&self) -> Tensor;
 }

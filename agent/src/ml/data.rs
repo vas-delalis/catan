@@ -29,15 +29,15 @@ impl<G: GameState> Dataset<G> {
             let mut buffer = vec![];
             while !game.is_terminal() {
                 game.apply_action(agent.get_action(game.clone()));
-                if rand::random_ratio(1, 3) {
+                if rand::random_ratio(1, 5) {
                     buffer.push(game.clone());
                 }
             }
 
             for state in buffer {
                 // TODO: prev player, not current
-                let (_, value) = game.outcome(state.current_player()).unwrap();
-                self.replay_buffer.push((state, -value));
+                let (_, value) = game.outcome(state.prev_player()).unwrap();
+                self.replay_buffer.push((state, value));
             }
         }
     }

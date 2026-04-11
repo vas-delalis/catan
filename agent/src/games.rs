@@ -4,7 +4,7 @@ mod tic_tac_toe;
 
 pub use dots_and_boxes::{
     Dir as DotsAndBoxesDir, DotsAndBoxes, Edge as DotsAndBoxesAction, Player as DotsAndBoxesPlayer,
-    ScoreEvaluator, TopsideEvaluator,
+    ScoreEvaluator,
 };
 pub use odds_game::{NormalizedOddsEvaluator, OddsEvaluator, OddsGame};
 pub use tic_tac_toe::{Cell, TicTacToe, TicTacToePlayer};
