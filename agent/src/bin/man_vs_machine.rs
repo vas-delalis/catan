@@ -1,0 +1,48 @@
+use agent::{
+    Agent, GameState, Player,
+    agents::{Human, Random, Search},
+    games::{DotsAndBoxes, DotsAndBoxesPlayer},
+    ml::{ModelEvaluator, create_model},
+};
+
+fn main() {
+    let _no_grad = tch::no_grad_guard();
+    let mut vs = tch::nn::VarStore::new(tch::Device::Cpu);
+    let model = create_model::<DotsAndBoxes>(&vs.root(), 32);
+    vs.load("model.safetensors").unwrap();
+    let evaluator = ModelEvaluator { model: &model };
+
+    let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
+    agents.push(Box::new(Human {}));
+    agents.push(Box::new(Search::new(
+        evaluator.clone(),
+        100000,
+        true,
+        1.41,
+        1.0,
+        0.01,
+    )));
+    // agents.push(Box::new(Random {}));
+    agents.push(Box::new(Random {}));
+    agents.push(Box::new(Random {}));
+
+    let mut game = DotsAndBoxes::new();
+    while !game.is_terminal() {
+        use DotsAndBoxesPlayer::*;
+        let agent = match game.current_player() {
+            A => &agents[0],
+            B => &agents[1],
+            C => &agents[2],
+            D => &agents[3],
+        };
+        game.apply_action(agent.get_action(game.clone()));
+
+        // println!("Value: {}", ScoreEvaluator::evaluate(game.clone()));
+    }
+    for (i, &p) in <DotsAndBoxes as GameState>::Player::list()
+        .iter()
+        .enumerate()
+    {
+        println!("{:?} {} {:?}", p, game.score[i], game.outcome(p).unwrap())
+    }
+}
