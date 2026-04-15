@@ -111,6 +111,15 @@ impl GameState for TicTacToe {
             None
         }
     }
+
+    fn pairwise_outcome(
+        &self,
+        player1: Self::Player,
+        player2: Self::Player,
+    ) -> Option<(Outcome, f64)> {
+        self.outcome(player1)
+    }
+
     fn is_terminal(&self) -> bool {
         self.check_winner().is_some() || self.get_actions(self.current_player).is_empty()
     }

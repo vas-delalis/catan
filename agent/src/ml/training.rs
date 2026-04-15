@@ -27,17 +27,17 @@ pub fn train(config: TrainingConfig) {
         .build(&vs, config.learning_rate)
         .unwrap();
 
-    let model = ml::create_model::<TicTacToe>(&root, 8);
+    let model = ml::create_model::<DotsAndBoxes>(&root, 32);
     let evaluator = ModelEvaluator { model: &model };
     let agent = Search::new(evaluator.clone(), 100, false, 1.41, 1.0, 0.01);
     let reference_agent = Search::new(ConstantEvaluator {}, 100, false, 1.41, 1.0, 0.01);
 
-    let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
+    let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
     agents.push(Box::new(reference_agent.clone()));
-    // agents.push(Box::new(reference_agent.clone()));
-    // agents.push(Box::new(reference_agent.clone()));
+    agents.push(Box::new(reference_agent.clone()));
+    agents.push(Box::new(reference_agent.clone()));
     agents.push(Box::new(agent.clone()));
-    let mut tournament = Tournament::new(agents, 1e-1, 1e-1);
+    let mut tournament: Tournament<DotsAndBoxes> = Tournament::new(1e-1, 1e-1);
     tournament.play();
     tournament.leaderboard();
 
@@ -75,12 +75,12 @@ pub fn train(config: TrainingConfig) {
         println!("[Test - Epoch {}] Loss {:.3}", epoch, sum / n as f32);
     }
 
-    let mut agents: Vec<Box<dyn Agent<TicTacToe>>> = Vec::new();
-    // agents.push(Box::new(reference_agent.clone()));
-    // agents.push(Box::new(reference_agent.clone()));
+    let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
+    agents.push(Box::new(reference_agent.clone()));
+    agents.push(Box::new(reference_agent.clone()));
     agents.push(Box::new(reference_agent.clone()));
     agents.push(Box::new(agent.clone()));
-    let mut tournament = Tournament::new(agents, 1e-2, 1e-2);
+    let mut tournament: Tournament<DotsAndBoxes> = Tournament::new(1e-2, 1e-2);
     tournament.play();
     tournament.leaderboard();
 

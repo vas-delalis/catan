@@ -92,6 +92,14 @@ impl GameState for OddsGame {
             Some(_) => Some((Outcome::Loss, -1.0)),
         }
     }
+
+    fn pairwise_outcome(
+        &self,
+        player1: Self::Player,
+        player2: Self::Player,
+    ) -> Option<(Outcome, f64)> {
+        self.outcome(player1)
+    }
 }
 
 impl Batch for OddsGame {

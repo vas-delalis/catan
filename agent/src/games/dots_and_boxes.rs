@@ -1,8 +1,6 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
-use crate::{
-    GameState, MultiplayerGameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Batch,
-};
+use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Batch};
 
 const WIDTH: usize = 3;
 const HEIGHT: usize = 3;
@@ -193,12 +191,6 @@ impl GameState for DotsAndBoxes {
         }
     }
 
-    fn is_terminal(&self) -> bool {
-        self.board.len() == N_EDGES
-    }
-}
-
-impl MultiplayerGameState for DotsAndBoxes {
     fn pairwise_outcome(&self, player1: Player, player2: Player) -> Option<(Outcome, f64)> {
         use Outcome::*;
         if self.is_terminal() {
@@ -214,6 +206,10 @@ impl MultiplayerGameState for DotsAndBoxes {
             return Some((Loss, 0.0));
         }
         None
+    }
+
+    fn is_terminal(&self) -> bool {
+        self.board.len() == N_EDGES
     }
 }
 
