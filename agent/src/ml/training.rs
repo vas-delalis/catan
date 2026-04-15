@@ -7,7 +7,7 @@ use tch::{
 use crate::{
     Agent, Tournament,
     agents::{ConstantEvaluator, Search},
-    games::{DotsAndBoxes, OddsGame, TicTacToe},
+    games::DotsAndBoxes,
     ml::{self, Batch, data::Dataset, model::ModelEvaluator},
 };
 
@@ -30,7 +30,7 @@ pub fn train(config: TrainingConfig) {
     let model = ml::create_model::<DotsAndBoxes>(&root, 32);
     let evaluator = ModelEvaluator { model: &model };
     let agent = Search::new(evaluator.clone(), 100, false, 1.41, 1.0, 0.01);
-    let reference_agent = Search::new(ConstantEvaluator {}, 100, false, 1.41, 1.0, 0.01);
+    let reference_agent = Search::new(ConstantEvaluator { c: 0.5 }, 100, false, 1.41, 1.0, 0.01);
 
     let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
     agents.push(Box::new(reference_agent.clone()));

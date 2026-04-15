@@ -112,11 +112,7 @@ impl GameState for TicTacToe {
         }
     }
 
-    fn pairwise_outcome(
-        &self,
-        player1: Self::Player,
-        player2: Self::Player,
-    ) -> Option<(Outcome, f64)> {
+    fn pairwise_outcome(&self, player1: Self::Player, _: Self::Player) -> Option<(Outcome, f64)> {
         self.outcome(player1)
     }
 

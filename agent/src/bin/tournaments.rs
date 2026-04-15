@@ -1,7 +1,7 @@
 use agent::{
-    Agent, Tournament,
-    agents::{ConstantEvaluator, Random, Search},
-    games::{NormalizedOddsEvaluator, OddsEvaluator, OddsGame, TicTacToe},
+    Tournament,
+    agents::Search,
+    games::TicTacToe,
     ml::{ModelEvaluator, create_model},
 };
 

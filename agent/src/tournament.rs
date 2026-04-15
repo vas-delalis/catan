@@ -144,6 +144,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
         println!("Running tournament with {} agents", self.roster.len());
         self.init_matchups();
         let mut results = 0;
+        let mut games_played = 0;
         let to_test = self.matchups.iter().filter(|(_, m)| m.evaluate).count();
 
         while results < to_test {
@@ -184,6 +185,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
                 let action = agent.get_action(scratch);
                 game.apply_action(action);
             }
+            games_played += 1;
 
             // Tally results and run tests
             for i in 0..player_count {
@@ -255,6 +257,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
             //     }
             // }
         }
+        println!("Played {} games", games_played);
     }
 
     pub fn leaderboard(&self) {
