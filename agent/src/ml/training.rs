@@ -27,30 +27,30 @@ pub fn train(config: TrainingConfig) {
         .build(&vs, config.learning_rate)
         .unwrap();
 
-    let model = ml::create_model::<DotsAndBoxes>(&root, 32);
+    let model = ml::create_model::<DotsAndBoxes>(&root, 16);
     let evaluator = ModelEvaluator { model: &model };
     let agent = Search::new(evaluator.clone(), 100, false, 1.41, 1.0, 0.01);
-    let reference_agent = Search::new(ConstantEvaluator { c: 0.5 }, 100, false, 1.41, 1.0, 0.01);
+    let reference_agent = Search::new(ConstantEvaluator { c: 0.0 }, 100, false, 1.41, 1.0, 0.01);
 
-    let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
-    agents.push(Box::new(reference_agent.clone()));
-    agents.push(Box::new(reference_agent.clone()));
-    agents.push(Box::new(reference_agent.clone()));
-    agents.push(Box::new(agent.clone()));
     let mut tournament: Tournament<DotsAndBoxes> = Tournament::new(1e-1, 1e-1);
+    tournament.add(Box::new(agent.clone()), true);
+    tournament.add(Box::new(reference_agent.clone()), true);
+    tournament.add(Box::new(reference_agent.clone()), false);
+    tournament.add(Box::new(reference_agent.clone()), false);
     tournament.play();
     tournament.leaderboard();
 
+    let params: usize = vs.trainable_variables().iter().map(|t| t.numel()).sum();
+    println!("Training {} parameters", params);
+
     for epoch in 1..=config.epochs {
         let mut dataset_train = Dataset::new(config.replay_count);
-        let mut dataset_test = Dataset::new(config.replay_count);
+        let mut dataset_test = Dataset::new(config.test_iters);
         dataset_train.selfplay(&agent);
         dataset_test.selfplay(&agent);
 
         // Train
-        for _ in 1..=config.train_iters {
-            let index = (0..dataset_train.len()).choose(&mut rand::rng()).unwrap();
-            let (state, value) = dataset_train.get(index);
+        for (state, value) in dataset_train {
             let x = state.batch();
             let y = Tensor::from(value as f32);
             let loss = model(&x).mse_loss(&y, tch::Reduction::Mean);
@@ -60,9 +60,7 @@ pub fn train(config: TrainingConfig) {
         // Test
         let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
         let mut test_losses = vec![];
-        for _ in 1..=config.test_iters {
-            let index = (0..dataset_test.len()).choose(&mut rand::rng()).unwrap();
-            let (state, value) = dataset_test.get(index);
+        for (state, value) in dataset_test {
             let x = state.batch();
             let y = Tensor::from(value as f32);
             let loss = model(&x).mse_loss(&y, tch::Reduction::Mean);
@@ -75,12 +73,11 @@ pub fn train(config: TrainingConfig) {
         println!("[Test - Epoch {}] Loss {:.3}", epoch, sum / n as f32);
     }
 
-    let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
-    agents.push(Box::new(reference_agent.clone()));
-    agents.push(Box::new(reference_agent.clone()));
-    agents.push(Box::new(reference_agent.clone()));
-    agents.push(Box::new(agent.clone()));
     let mut tournament: Tournament<DotsAndBoxes> = Tournament::new(1e-2, 1e-2);
+    tournament.add(Box::new(agent.clone()), true);
+    tournament.add(Box::new(reference_agent.clone()), true);
+    tournament.add(Box::new(reference_agent.clone()), false);
+    tournament.add(Box::new(reference_agent.clone()), false);
     tournament.play();
     tournament.leaderboard();
 

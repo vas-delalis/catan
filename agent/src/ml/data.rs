@@ -1,3 +1,5 @@
+use rand::seq::SliceRandom;
+
 use crate::{Agent, GameState};
 
 type Snapshot<G> = (G, f64);
@@ -13,10 +15,6 @@ impl<G: GameState> Dataset<G> {
             replay_buffer: vec![],
             replay_count,
         }
-    }
-
-    pub fn get(&self, index: usize) -> Snapshot<G> {
-        self.replay_buffer[index].clone()
     }
 
     pub fn len(&self) -> usize {
@@ -35,10 +33,18 @@ impl<G: GameState> Dataset<G> {
             }
 
             for state in buffer {
-                // TODO: prev player, not current
                 let (_, value) = game.outcome(state.prev_player()).unwrap();
                 self.replay_buffer.push((state, value));
             }
         }
+        self.replay_buffer.shuffle(&mut rand::rng());
+    }
+}
+
+impl<G: GameState> IntoIterator for Dataset<G> {
+    type Item = Snapshot<G>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.replay_buffer.into_iter()
     }
 }
