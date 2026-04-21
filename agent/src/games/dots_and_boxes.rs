@@ -2,7 +2,7 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Batch};
 
-const WIDTH: usize = 3;
+const WIDTH: usize = 2;
 const HEIGHT: usize = 3;
 const N_EDGES: usize = 2 * WIDTH * HEIGHT + WIDTH + HEIGHT;
 
@@ -10,6 +10,7 @@ const N_EDGES: usize = 2 * WIDTH * HEIGHT + WIDTH + HEIGHT;
 pub struct DotsAndBoxes {
     pub board: HashSet<Edge>,
     current_player: Player,
+    prev_player: Player,
     pub score: [usize; 4],
 }
 
@@ -122,6 +123,7 @@ impl GameState for DotsAndBoxes {
     fn new() -> Self {
         DotsAndBoxes {
             board: HashSet::with_capacity(N_EDGES),
+            prev_player: A,
             current_player: A,
             score: [0, 0, 0, 0],
         }
@@ -147,12 +149,7 @@ impl GameState for DotsAndBoxes {
     }
 
     fn prev_player(&self) -> Self::Player {
-        match self.current_player {
-            A => D,
-            B => A,
-            C => B,
-            D => C,
-        }
+        self.prev_player
     }
 
     fn apply_action(&mut self, e: Edge) {
@@ -169,6 +166,7 @@ impl GameState for DotsAndBoxes {
                 end_turn = false;
             }
         }
+        self.prev_player = self.current_player;
         if end_turn {
             let players = Player::list();
             self.current_player = players[(self.current_player as usize + 1) % players.len()];
@@ -187,7 +185,7 @@ impl GameState for DotsAndBoxes {
             }
             return Some((Win, 1.0));
         } else {
-            return Some((Loss, 0.0));
+            return Some((Loss, -1.0));
         }
     }
 
@@ -198,12 +196,12 @@ impl GameState for DotsAndBoxes {
             let p1_win = winners.contains(&player1);
             let p2_win = winners.contains(&player2);
             if p1_win == p2_win {
-                return Some((Draw, 0.5));
+                return Some((Draw, 0.0));
             }
             if p1_win {
                 return Some((Win, 1.0));
             }
-            return Some((Loss, 0.0));
+            return Some((Loss, -1.0));
         }
         None
     }
@@ -258,7 +256,7 @@ impl Display for DotsAndBoxes {
 }
 
 impl Batch for DotsAndBoxes {
-    const BATCH_DIM: i64 = N_EDGES as i64 + 4;
+    const BATCH_DIM: i64 = N_EDGES as i64 + 8;
 
     fn batch(&self) -> tch::Tensor {
         let mut planes = vec![0f32; N_EDGES];
@@ -268,17 +266,21 @@ impl Batch for DotsAndBoxes {
             for y in -1..=(HEIGHT as i8 + 1) {
                 for dir in [N, W] {
                     let e = Edge(x as i8, y as i8, dir);
-                    if e.in_bounds() && self.board.contains(&e) {
-                        planes[count] = 1.0;
+                    if e.in_bounds() {
+                        if self.board.contains(&e) {
+                            planes[count] = 1.0;
+                        }
                         count += 1;
                     }
                 }
             }
         }
+        let mut played = vec![0f32; 4];
+        played[self.prev_player() as usize] = 1.0;
         let mut to_play = vec![0f32; 4];
         to_play[self.current_player as usize] = 1.0;
 
-        Tensor::from_slice(&[planes, to_play].concat())
+        Tensor::from_slice(&[planes, played, to_play].concat())
     }
 }
 
@@ -400,5 +402,16 @@ mod tests {
         game.current_player = A;
         let e = ScoreEvaluator {};
         assert!(e.evaluate(game) == 0.1);
+    }
+
+    #[test]
+    fn batch() {
+        let mut game = DotsAndBoxes::new();
+        game.apply_action(Edge(0, 2, N));
+        let b: Vec<f32> = game.batch().try_into().unwrap();
+        dbg!(b);
+        game.apply_action(Edge(0, 0, N));
+        let b: Vec<f32> = game.batch().try_into().unwrap();
+        dbg!(b);
     }
 }
