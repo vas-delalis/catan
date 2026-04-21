@@ -30,7 +30,7 @@ pub fn train(config: TrainingConfig) {
         .unwrap();
 
     let model = ml::create_model::<GAME>(&root, 32);
-    let evaluator = ModelEvaluator { model: &model };
+    let evaluator = ModelEvaluator::new(&model);
     let agent = Search::new(
         evaluator.clone(),
         config.search_evals,
@@ -40,7 +40,7 @@ pub fn train(config: TrainingConfig) {
         0.01,
     );
     let reference_agent = Search::new(
-        ConstantEvaluator { c: 0.0 },
+        ConstantEvaluator::new(0.0),
         config.search_evals,
         false,
         1.41,

@@ -13,6 +13,13 @@ pub fn create_model<'a, G: Batch>(vs: &nn::Path, hidden: i64) -> Model<'a> {
             Default::default(),
         ))
         .add_fn(|xs| xs.relu())
+        .add(nn::linear(
+            vs / "layer2",
+            hidden,
+            hidden,
+            Default::default(),
+        ))
+        .add_fn(|xs| xs.relu())
         .add(nn::linear(vs, hidden, 1, Default::default()));
     Box::new(move |xs| xs.apply(&seq))
 }
@@ -20,6 +27,12 @@ pub fn create_model<'a, G: Batch>(vs: &nn::Path, hidden: i64) -> Model<'a> {
 #[derive(Clone)]
 pub struct ModelEvaluator<'a> {
     pub model: &'a Model<'a>,
+}
+
+impl<'a> ModelEvaluator<'a> {
+    pub fn new(model: &'a Model<'a>) -> Self {
+        ModelEvaluator { model }
+    }
 }
 
 impl<'a, G: Batch> Evaluator<G> for ModelEvaluator<'a> {
