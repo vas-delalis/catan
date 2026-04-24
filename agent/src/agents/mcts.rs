@@ -10,6 +10,12 @@ pub trait Evaluator<G: GameState> {
     fn evaluate(&self, game_state: G) -> f64;
 }
 
+impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
+    fn evaluate(&self, game_state: G) -> f64 {
+        (**self).evaluate(game_state)
+    }
+}
+
 pub struct Node<G: GameState> {
     visits: u16,
     children: HashMap<G::Action, Box<Node<G>>>,

@@ -1,28 +1,18 @@
 use agent::{
     Agent, GameState, Player,
-    agents::{Human, Random, Search},
+    agents::{Evaluator, Human, Random, Search},
     games::{DotsAndBoxes, DotsAndBoxesPlayer},
-    ml::{ModelEvaluator, create_model},
+    ml::{Model, two_layers},
 };
 
 fn main() {
     let _no_grad = tch::no_grad_guard();
-    let mut vs = tch::nn::VarStore::new(tch::Device::Cpu);
-    let model = create_model::<DotsAndBoxes>(&vs.root(), 32);
-    vs.load("model.safetensors").unwrap();
-    let evaluator = ModelEvaluator { model: &model };
+    let arch = two_layers::<DotsAndBoxes>(8);
+    let model = Model::new::<DotsAndBoxes>(arch);
 
     let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
     agents.push(Box::new(Human {}));
-    agents.push(Box::new(Search::new(
-        evaluator.clone(),
-        100000,
-        true,
-        1.41,
-        1.0,
-        0.01,
-    )));
-    // agents.push(Box::new(Random {}));
+    agents.push(Box::new(Search::new(&model, 10000, true, 1.41, 1.0, 0.01)));
     agents.push(Box::new(Random {}));
     agents.push(Box::new(Random {}));
 
@@ -35,9 +25,10 @@ fn main() {
             C => &agents[2],
             D => &agents[3],
         };
-        game.apply_action(agent.get_action(game.clone()));
-
-        // println!("Value: {}", ScoreEvaluator::evaluate(game.clone()));
+        let action = agent.get_action(game.clone());
+        println!("{:?} {:?}", game.current_player(), action);
+        game.apply_action(action);
+        println!("Value: {:.2}", model.evaluate(game.clone()));
     }
     for (i, &p) in <DotsAndBoxes as GameState>::Player::list()
         .iter()
