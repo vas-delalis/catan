@@ -27,6 +27,7 @@ pub enum Outcome {
 }
 
 pub trait GameState: Clone {
+    const NAME: &str;
     type Action: Action;
     type Player: Player;
 

@@ -53,9 +53,6 @@ impl Model {
     }
 
     pub fn parameter_count(&self) -> usize {
-        for (n, v) in self.vs.variables() {
-            println!("{} {:?}", n, v);
-        }
         self.vs
             .trainable_variables()
             .iter()
@@ -63,11 +60,11 @@ impl Model {
             .sum()
     }
 
-    pub fn save(&self, path: &str) -> Result<(), tch::TchError> {
+    pub fn save(&self, path: &std::path::Path) -> Result<(), tch::TchError> {
         self.vs.save(path)
     }
 
-    pub fn load(&mut self, path: &str) -> Result<(), tch::TchError> {
+    pub fn load(&mut self, path: &std::path::Path) -> Result<(), tch::TchError> {
         self.vs.load(path)
     }
 }

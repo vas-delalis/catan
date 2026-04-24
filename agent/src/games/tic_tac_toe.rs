@@ -57,6 +57,7 @@ impl TicTacToe {
 }
 
 impl GameState for TicTacToe {
+    const NAME: &str = "TicTacToe";
     type Action = Cell;
     type Player = TicTacToePlayer;
 

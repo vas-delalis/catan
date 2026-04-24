@@ -117,6 +117,7 @@ impl DotsAndBoxes {
 }
 
 impl GameState for DotsAndBoxes {
+    const NAME: &str = "DotsAndBoxes";
     type Action = Edge;
     type Player = Player;
 

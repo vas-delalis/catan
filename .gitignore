@@ -1,6 +1,6 @@
 /target
 *.bin
-/agent/model
+/agent/models
 flamegraph.svg
 perf.data
 perf.data.old

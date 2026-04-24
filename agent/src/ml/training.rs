@@ -1,5 +1,8 @@
+use std::fs;
+use std::path::PathBuf;
+
 use crate::{
-    Tournament,
+    GameState, Tournament,
     agents::{ConstantEvaluator, Search},
     games::DotsAndBoxes,
     ml::{Batch, Model, data::Dataset, model::two_layers},
@@ -23,7 +26,7 @@ pub struct TrainingConfig {
 
 pub fn train(config: TrainingConfig) {
     let arch = two_layers::<GAME>(8);
-    let model = Model::new::<GAME>(arch); //.with_optimizer(config.learning_rate);
+    let model = Model::new::<GAME>(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), config.learning_rate)
         .unwrap();
@@ -105,5 +108,32 @@ pub fn train(config: TrainingConfig) {
     tournament.play();
     tournament.leaderboard();
 
-    model.save("model.safetensors").unwrap();
+    model.save(&get_save_path()).unwrap();
+}
+
+fn get_save_path() -> PathBuf {
+    let mut path = PathBuf::from("./models");
+    path.push(GAME::NAME);
+    fs::create_dir_all(&path).unwrap();
+
+    // Get highest id in directory
+    let prev = fs::read_dir(&path)
+        .unwrap()
+        .filter_map(|e| {
+            e.unwrap()
+                .path()
+                .file_prefix()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse::<usize>()
+                .ok()
+        })
+        .max();
+    let next = match prev {
+        Some(x) => x + 1,
+        None => 0,
+    };
+    path.push(format!("{}.safetensors", next));
+    path
 }

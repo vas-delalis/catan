@@ -31,6 +31,7 @@ impl Player for OddsGamePlayer {
 }
 
 impl GameState for OddsGame {
+    const NAME: &str = "OddsGame";
     type Action = OddsGameAction;
     type Player = OddsGamePlayer;
 
