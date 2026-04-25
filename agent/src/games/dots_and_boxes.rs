@@ -186,7 +186,7 @@ impl GameState for DotsAndBoxes {
             }
             return Some((Win, 1.0));
         } else {
-            return Some((Loss, -1.0));
+            return Some((Loss, -0.3333));
         }
     }
 
