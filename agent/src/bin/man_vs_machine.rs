@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use agent::{
     Agent, GameState, Player,
     agents::{Evaluator, Human, Random, Search},
@@ -8,7 +10,10 @@ use agent::{
 fn main() {
     let _no_grad = tch::no_grad_guard();
     let arch = two_layers::<DotsAndBoxes>(8);
-    let model = Model::new::<DotsAndBoxes>(arch);
+    let mut model = Model::new::<DotsAndBoxes>(arch);
+    model
+        .load(Path::new("./models/DotsAndBoxes/3.safetensors"))
+        .unwrap();
 
     let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
     agents.push(Box::new(Human {}));
