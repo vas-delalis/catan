@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
 
 use rand::{rng, seq::SliceRandom};
 
@@ -142,6 +145,8 @@ impl<'a, G: GameState> Tournament<'a, G> {
         let player_count = G::Player::list().len();
         assert!(self.roster.len() >= player_count);
         println!("Running tournament with {} agents", self.roster.len());
+        let start = Instant::now();
+
         self.init_matchups();
         let mut results = 0;
         let mut games_played = 0;
@@ -257,7 +262,9 @@ impl<'a, G: GameState> Tournament<'a, G> {
             //     }
             // }
         }
+
         println!("Played {} games", games_played);
+        println!("Elapsed: {}s", start.elapsed().as_secs());
     }
 
     pub fn leaderboard(&self) {
@@ -267,7 +274,13 @@ impl<'a, G: GameState> Tournament<'a, G> {
                     continue;
                 }
                 let line = &self.matchups[&(i, j)];
-                println!("{} {} {}/{}/{}", i, j, line.wins, line.draws, line.losses)
+                let wr = (line.wins as f64 + line.draws as f64 / 2.0)
+                    / (line.wins + line.draws + line.losses) as f64
+                    * 100.0;
+                println!(
+                    "{}-{}  {:.0}%  {}/{}/{}",
+                    i, j, wr, line.wins, line.draws, line.losses
+                )
             }
         }
         for agent in &self.roster {

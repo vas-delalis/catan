@@ -108,7 +108,9 @@ pub fn train(config: TrainingConfig) {
     tournament.play();
     tournament.leaderboard();
 
-    model.save(&get_save_path()).unwrap();
+    let path = get_save_path();
+    model.save(&path).unwrap();
+    println!("Saved as {}", &path.file_name().unwrap().to_string_lossy());
 }
 
 fn get_save_path() -> PathBuf {
