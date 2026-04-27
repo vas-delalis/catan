@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
-use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Batch};
+use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Image};
 
 const WIDTH: usize = 2;
 const HEIGHT: usize = 3;
@@ -256,10 +256,10 @@ impl Display for DotsAndBoxes {
     }
 }
 
-impl Batch for DotsAndBoxes {
-    const BATCH_DIM: i64 = N_EDGES as i64 + 12;
+impl Image for DotsAndBoxes {
+    const IMAGE_SIZE: i64 = N_EDGES as i64 + 12;
 
-    fn batch(&self) -> tch::Tensor {
+    fn image(&self) -> tch::Tensor {
         let mut planes = vec![0f32; N_EDGES];
 
         let mut count = 0;
@@ -411,13 +411,13 @@ mod tests {
     }
 
     #[test]
-    fn batch() {
+    fn image() {
         let mut game = DotsAndBoxes::new();
         game.apply_action(Edge(0, 2, N));
-        let b: Vec<f32> = game.batch().try_into().unwrap();
+        let b: Vec<f32> = game.image().try_into().unwrap();
         dbg!(b);
         game.apply_action(Edge(0, 0, N));
-        let b: Vec<f32> = game.batch().try_into().unwrap();
+        let b: Vec<f32> = game.image().try_into().unwrap();
         dbg!(b);
     }
 }

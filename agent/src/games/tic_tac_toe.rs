@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use tch::Tensor;
 
-use crate::{GameState, Outcome, Player, ml::Batch};
+use crate::{GameState, Outcome, Player, ml::Image};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TicTacToePlayer {
@@ -122,10 +122,10 @@ impl GameState for TicTacToe {
     }
 }
 
-impl Batch for TicTacToe {
-    const BATCH_DIM: i64 = 19;
+impl Image for TicTacToe {
+    const IMAGE_SIZE: i64 = 19;
 
-    fn batch(&self) -> tch::Tensor {
+    fn image(&self) -> tch::Tensor {
         let mut plane1: Vec<f32> = vec![];
         let mut plane2: Vec<f32> = vec![];
         let plane3: Vec<f32> = if self.current_player() == TicTacToePlayer::X {

@@ -2,7 +2,7 @@ use rand::{random_range, random_ratio};
 use std::cmp::{max, min};
 use tch::Tensor;
 
-use crate::{GameState, Outcome, Player, agents::Evaluator, ml::Batch};
+use crate::{GameState, Outcome, Player, agents::Evaluator, ml::Image};
 
 const DENOMINATOR: u32 = 100;
 
@@ -99,9 +99,9 @@ impl GameState for OddsGame {
     }
 }
 
-impl Batch for OddsGame {
-    const BATCH_DIM: i64 = 3;
-    fn batch(&self) -> tch::Tensor {
+impl Image for OddsGame {
+    const IMAGE_SIZE: i64 = 3;
+    fn image(&self) -> tch::Tensor {
         Tensor::from_slice(&[
             self.w as f32,
             self.l as f32,

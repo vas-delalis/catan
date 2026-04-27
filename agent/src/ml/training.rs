@@ -5,7 +5,7 @@ use crate::{
     GameState, Tournament,
     agents::{ConstantEvaluator, Search},
     games::DotsAndBoxes,
-    ml::{Batch, Model, data::Dataset, vanilla},
+    ml::{Image, Model, data::Dataset, vanilla},
 };
 use itertools::Itertools;
 use tch::{
@@ -62,7 +62,7 @@ pub fn train(config: TrainingConfig) {
         for batch in &dataset_train.into_iter().chunks(config.batch_size) {
             let mut loss = Tensor::from(0f32);
             for (state, value) in batch {
-                let x = state.batch();
+                let x = state.image();
                 let y = Tensor::from(value as f32);
                 let output = model.infer(x);
                 loss += output.mse_loss(&y, tch::Reduction::Mean);
@@ -88,7 +88,7 @@ pub fn train(config: TrainingConfig) {
         let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
         let mut test_losses = vec![];
         for (state, value) in dataset_test {
-            let x = state.batch();
+            let x = state.image();
             let y = Tensor::from(value as f32);
             let loss = model.infer(x).mse_loss(&y, tch::Reduction::Mean);
             let loss: f32 = loss.try_into().unwrap();

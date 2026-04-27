@@ -6,9 +6,7 @@ pub use model::{Model, vanilla};
 use tch::Tensor;
 pub use training::{TrainingConfig, train};
 
-use crate::GameState;
-
-pub trait Batch: GameState {
-    const BATCH_DIM: i64;
-    fn batch(&self) -> Tensor;
+pub trait Image {
+    const IMAGE_SIZE: i64;
+    fn image(&self) -> Tensor;
 }

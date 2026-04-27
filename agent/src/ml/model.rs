@@ -3,17 +3,17 @@ use tch::{
     nn::{self, Path, Sequential, VarStore},
 };
 
-use crate::{agents::Evaluator, ml::Batch};
+use crate::{GameState, agents::Evaluator, ml::Image};
 
 pub type Architecture = Box<dyn FnOnce(&Path) -> Sequential>;
 
-pub fn vanilla<G: Batch>(layers: usize, hidden: i64) -> Architecture {
+pub fn vanilla<G: Image>(layers: usize, hidden: i64) -> Architecture {
     assert!(layers > 1);
     Box::new(move |root: &Path<'_>| {
         let mut seq = nn::seq()
             .add(nn::linear(
                 root.clone() / "layer1",
-                G::BATCH_DIM,
+                G::IMAGE_SIZE,
                 hidden,
                 Default::default(),
             ))
@@ -46,7 +46,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new<G: Batch>(config: Architecture) -> Self {
+    pub fn new<G: Image>(config: Architecture) -> Self {
         let device = tch::Device::Cpu;
         let vs = nn::VarStore::new(device);
         let root = vs.root();
@@ -81,9 +81,9 @@ impl Model {
     }
 }
 
-impl<G: Batch> Evaluator<G> for Model {
+impl<G: GameState + Image> Evaluator<G> for Model {
     fn evaluate(&self, game_state: G) -> f32 {
-        let image = game_state.batch();
+        let image = game_state.image();
         self.infer(image).try_into().unwrap()
     }
 }
