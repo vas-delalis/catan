@@ -142,7 +142,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
     }
 
     pub fn play(&mut self) {
-        let player_count = G::Player::list().len();
+        let player_count = G::Player::LEN;
         assert!(self.roster.len() >= player_count);
         println!("Running tournament with {} agents", self.roster.len());
         let start = Instant::now();

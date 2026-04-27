@@ -25,8 +25,15 @@ pub enum OddsGamePlayer {
 use OddsGamePlayer::*;
 
 impl Player for OddsGamePlayer {
+    const LEN: usize = 2;
     fn list() -> Vec<Self> {
         vec![A, B]
+    }
+}
+
+impl Into<usize> for OddsGamePlayer {
+    fn into(self) -> usize {
+        self as usize
     }
 }
 

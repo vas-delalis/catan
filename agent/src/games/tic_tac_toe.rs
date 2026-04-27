@@ -11,8 +11,15 @@ pub enum TicTacToePlayer {
 }
 
 impl Player for TicTacToePlayer {
+    const LEN: usize = 2;
     fn list() -> Vec<TicTacToePlayer> {
         vec![TicTacToePlayer::X, TicTacToePlayer::O]
+    }
+}
+
+impl Into<usize> for TicTacToePlayer {
+    fn into(self) -> usize {
+        self as usize
     }
 }
 

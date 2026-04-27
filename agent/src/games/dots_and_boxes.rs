@@ -23,8 +23,15 @@ pub enum Player {
 }
 
 impl PlayerTrait for Player {
+    const LEN: usize = 4;
     fn list() -> Vec<Player> {
         vec![A, B, C, D]
+    }
+}
+
+impl Into<usize> for Player {
+    fn into(self) -> usize {
+        self as usize
     }
 }
 
