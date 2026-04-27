@@ -257,7 +257,7 @@ impl Display for DotsAndBoxes {
 }
 
 impl Batch for DotsAndBoxes {
-    const BATCH_DIM: i64 = N_EDGES as i64 + 8;
+    const BATCH_DIM: i64 = N_EDGES as i64 + 12;
 
     fn batch(&self) -> tch::Tensor {
         let mut planes = vec![0f32; N_EDGES];
@@ -276,12 +276,17 @@ impl Batch for DotsAndBoxes {
                 }
             }
         }
+        let mut score = vec![0f32; 4];
+        let max = (WIDTH * HEIGHT) as f32 / 2 as f32;
+        for i in 0..4 {
+            score[i] = self.score[i] as f32 - max;
+        }
         let mut played = vec![0f32; 4];
         played[self.prev_player() as usize] = 1.0;
         let mut to_play = vec![0f32; 4];
         to_play[self.current_player as usize] = 1.0;
 
-        Tensor::from_slice(&[planes, played, to_play].concat())
+        Tensor::from_slice(&[planes, score, played, to_play].concat())
     }
 }
 
