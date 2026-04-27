@@ -97,7 +97,7 @@ impl GameState for TicTacToe {
         };
     }
 
-    fn outcome(&self, player: TicTacToePlayer) -> Option<(Outcome, f64)> {
+    fn outcome(&self, player: TicTacToePlayer) -> Option<(Outcome, f32)> {
         if self.is_terminal() {
             if let Some(winner) = self.check_winner() {
                 if winner == player {
@@ -113,7 +113,7 @@ impl GameState for TicTacToe {
         }
     }
 
-    fn pairwise_outcome(&self, player1: Self::Player, _: Self::Player) -> Option<(Outcome, f64)> {
+    fn pairwise_outcome(&self, player1: Self::Player, _: Self::Player) -> Option<(Outcome, f32)> {
         self.outcome(player1)
     }
 

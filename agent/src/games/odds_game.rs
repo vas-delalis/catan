@@ -86,7 +86,7 @@ impl GameState for OddsGame {
         self.winner.is_some()
     }
 
-    fn outcome(&self, player: Self::Player) -> Option<(Outcome, f64)> {
+    fn outcome(&self, player: Self::Player) -> Option<(Outcome, f32)> {
         match self.winner {
             None => None,
             Some(winner) if winner == player => Some((Outcome::Win, 1.0)),
@@ -94,7 +94,7 @@ impl GameState for OddsGame {
         }
     }
 
-    fn pairwise_outcome(&self, player1: Self::Player, _: Self::Player) -> Option<(Outcome, f64)> {
+    fn pairwise_outcome(&self, player1: Self::Player, _: Self::Player) -> Option<(Outcome, f32)> {
         self.outcome(player1)
     }
 }
@@ -112,9 +112,9 @@ impl Batch for OddsGame {
 
 pub struct OddsEvaluator {}
 impl Evaluator<OddsGame> for OddsEvaluator {
-    fn evaluate(&self, game_state: OddsGame) -> f64 {
-        let v = game_state.w as f64 / (game_state.w + game_state.l) as f64;
-        let v = v * (game_state.w + game_state.l) as f64 / DENOMINATOR as f64;
+    fn evaluate(&self, game_state: OddsGame) -> f32 {
+        let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
+        let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;
         let v = v * 2.0 - 1.0;
         if game_state.current_player() == A {
             -v
@@ -126,10 +126,10 @@ impl Evaluator<OddsGame> for OddsEvaluator {
 
 pub struct NormalizedOddsEvaluator {}
 impl Evaluator<OddsGame> for NormalizedOddsEvaluator {
-    fn evaluate(&self, game_state: OddsGame) -> f64 {
-        let v = game_state.w as f64 / (game_state.w + game_state.l) as f64;
+    fn evaluate(&self, game_state: OddsGame) -> f32 {
+        let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
         let v = v * 2.0 - 1.0;
-        let v = v * (game_state.w + game_state.l) as f64 / DENOMINATOR as f64;
+        let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;
         if game_state.current_player() == A {
             -v
         } else {

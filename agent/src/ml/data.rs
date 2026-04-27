@@ -2,7 +2,7 @@ use rand::seq::SliceRandom;
 
 use crate::{Agent, GameState};
 
-type Snapshot<G> = (G, f64);
+type Snapshot<G> = (G, f32);
 
 pub struct Dataset<G: GameState> {
     replay_buffer: Vec<Snapshot<G>>,

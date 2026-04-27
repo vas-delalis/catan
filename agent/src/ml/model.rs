@@ -82,7 +82,7 @@ impl Model {
 }
 
 impl<G: Batch> Evaluator<G> for Model {
-    fn evaluate(&self, game_state: G) -> f64 {
+    fn evaluate(&self, game_state: G) -> f32 {
         let image = game_state.batch();
         self.infer(image).try_into().unwrap()
     }

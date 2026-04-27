@@ -10,15 +10,15 @@ use crate::GameState;
 
 #[derive(Clone)]
 pub struct ConstantEvaluator {
-    pub constant: f64,
+    pub constant: f32,
 }
 impl ConstantEvaluator {
-    pub fn new(constant: f64) -> Self {
+    pub fn new(constant: f32) -> Self {
         ConstantEvaluator { constant }
     }
 }
 impl<G: GameState> Evaluator<G> for ConstantEvaluator {
-    fn evaluate(&self, _: G) -> f64 {
+    fn evaluate(&self, _: G) -> f32 {
         self.constant
     }
 }

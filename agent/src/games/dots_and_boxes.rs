@@ -174,7 +174,7 @@ impl GameState for DotsAndBoxes {
         }
     }
 
-    fn outcome(&self, player: Player) -> Option<(Outcome, f64)> {
+    fn outcome(&self, player: Player) -> Option<(Outcome, f32)> {
         use Outcome::*;
         if !self.is_terminal() {
             return None;
@@ -182,7 +182,7 @@ impl GameState for DotsAndBoxes {
         let winners = self.winners().unwrap();
         if winners.contains(&player) {
             if winners.len() > 1 {
-                return Some((Draw, 1.0 / winners.len() as f64));
+                return Some((Draw, 1.0 / winners.len() as f32));
             }
             return Some((Win, 1.0));
         } else {
@@ -190,7 +190,7 @@ impl GameState for DotsAndBoxes {
         }
     }
 
-    fn pairwise_outcome(&self, player1: Player, player2: Player) -> Option<(Outcome, f64)> {
+    fn pairwise_outcome(&self, player1: Player, player2: Player) -> Option<(Outcome, f32)> {
         use Outcome::*;
         if self.is_terminal() {
             let winners = self.winners().unwrap();
@@ -304,7 +304,7 @@ impl Batch for DotsAndBoxes {
 
 pub struct ScoreEvaluator {}
 impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
-    fn evaluate(&self, game_state: DotsAndBoxes) -> f64 {
+    fn evaluate(&self, game_state: DotsAndBoxes) -> f32 {
         let sum: usize = game_state.score.iter().sum();
         if sum == 0 {
             return 0.0;
@@ -313,7 +313,7 @@ impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
             .iter()
             .position(|&p| game_state.current_player() == p)
             .unwrap();
-        let share = game_state.score[idx] as f64 / sum as f64;
+        let share = game_state.score[idx] as f32 / sum as f32;
         share * 2.0 - 1.0
     }
 }

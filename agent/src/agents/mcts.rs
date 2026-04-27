@@ -7,11 +7,11 @@ use rand_distr::{Distribution, Gamma};
 use crate::{Agent, GameState};
 
 pub trait Evaluator<G: GameState> {
-    fn evaluate(&self, game_state: G) -> f64;
+    fn evaluate(&self, game_state: G) -> f32;
 }
 
 impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
-    fn evaluate(&self, game_state: G) -> f64 {
+    fn evaluate(&self, game_state: G) -> f32 {
         (**self).evaluate(game_state)
     }
 }
@@ -94,7 +94,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         let to_play = game.current_player();
         node.to_play = Some(to_play);
         if let Some((_, value)) = game.outcome(node.played.unwrap()) {
-            return value;
+            return value as f64;
         }
         let actions = game.get_actions(to_play);
 
@@ -110,7 +110,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             let child = Node::new(p / sum);
             node.children.insert(*action, Box::new(child));
         }
-        value
+        value as f64
     }
 
     pub fn run(&self, mut game_state: G) -> G::Action {

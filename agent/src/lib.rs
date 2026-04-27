@@ -37,10 +37,10 @@ pub trait GameState: Clone {
     fn current_player(&self) -> Self::Player;
     fn prev_player(&self) -> Self::Player;
     fn is_terminal(&self) -> bool;
-    fn outcome(&self, player: Self::Player) -> Option<(Outcome, f64)>;
+    fn outcome(&self, player: Self::Player) -> Option<(Outcome, f32)>;
     fn pairwise_outcome(
         &self,
         player1: Self::Player,
         player2: Self::Player,
-    ) -> Option<(Outcome, f64)>;
+    ) -> Option<(Outcome, f32)>;
 }
