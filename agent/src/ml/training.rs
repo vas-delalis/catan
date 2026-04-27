@@ -5,7 +5,7 @@ use crate::{
     GameState, Tournament,
     agents::{ConstantEvaluator, Search},
     games::DotsAndBoxes,
-    ml::{Batch, Model, data::Dataset, model::two_layers},
+    ml::{Batch, Model, data::Dataset, vanilla},
 };
 use itertools::Itertools;
 use tch::{
@@ -25,7 +25,7 @@ pub struct TrainingConfig {
 }
 
 pub fn train(config: TrainingConfig) {
-    let arch = two_layers::<GAME>(8);
+    let arch = vanilla::<GAME>(3, 16);
     let model = Model::new::<GAME>(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), config.learning_rate)

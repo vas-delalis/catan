@@ -116,7 +116,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     pub fn run(&self, mut game_state: G) -> G::Action {
         let mut root = Box::new(Node::new(0.0));
         root.played = Some(game_state.current_player());
-        self.evaluate(&mut root, &mut game_state); // arbitrary player
+        self.evaluate(&mut root, &mut game_state);
         self.add_exploration_noise(&mut root);
 
         for _ in 0..self.max_evals {
@@ -158,16 +158,17 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         // let mut q: Vec<(Option<G::Action>, &Node<G>, usize)> = Vec::new();
         // q.push((None, &root, 0));
         // while let Some((action, node, level)) = q.pop() {
-        //     if level > 3 || node.visits == 0 {
+        //     if level > 6 || node.visits == 0 {
         //         continue;
         //     }
         //     print!("{}", &String::from(" ").repeat(level));
         //     println!(
-        //         "{:?} {:?} {} {:.1}",
+        //         "{:?} {:?} {} {:.1}{}",
         //         node.played,
         //         action,
         //         node.visits,
-        //         node.value()
+        //         node.value(),
+        //         if node.children.is_empty() { "!" } else { "" }
         //     );
         //     for (&action, child) in node.children.iter() {
         //         q.push((Some(action), child, level + 1));

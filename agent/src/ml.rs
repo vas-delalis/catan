@@ -2,7 +2,7 @@ mod data;
 mod model;
 mod training;
 
-pub use model::{Model, two_layers};
+pub use model::{Model, vanilla};
 use tch::Tensor;
 pub use training::{TrainingConfig, train};
 

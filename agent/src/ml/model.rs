@@ -7,24 +7,36 @@ use crate::{agents::Evaluator, ml::Batch};
 
 pub type Architecture = Box<dyn FnOnce(&Path) -> Sequential>;
 
-pub fn two_layers<G: Batch>(hidden: i64) -> Architecture {
+pub fn vanilla<G: Batch>(layers: usize, hidden: i64) -> Architecture {
+    assert!(layers > 1);
     Box::new(move |root: &Path<'_>| {
-        nn::seq()
+        let mut seq = nn::seq()
             .add(nn::linear(
                 root.clone() / "layer1",
                 G::BATCH_DIM,
                 hidden,
                 Default::default(),
             ))
-            .add_fn(|xs| xs.relu())
-            .add(nn::linear(
-                root.clone() / "layer2",
-                hidden,
-                hidden,
-                Default::default(),
-            ))
-            .add_fn(|xs| xs.relu())
-            .add(nn::linear(root.clone(), hidden, 1, Default::default()))
+            .add_fn(|xs| xs.relu());
+
+        for i in 2..layers + 1 {
+            seq = seq
+                .add(nn::linear(
+                    root.clone() / format!("layer{}", i),
+                    hidden,
+                    hidden,
+                    Default::default(),
+                ))
+                .add_fn(|xs| xs.relu());
+        }
+
+        seq = seq.add(nn::linear(
+            root.clone() / "output",
+            hidden,
+            1,
+            Default::default(),
+        ));
+        seq
     })
 }
 

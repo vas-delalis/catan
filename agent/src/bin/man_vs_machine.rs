@@ -4,20 +4,20 @@ use agent::{
     Agent, GameState, Player,
     agents::{Evaluator, Human, Random, Search},
     games::{DotsAndBoxes, DotsAndBoxesPlayer},
-    ml::{Model, two_layers},
+    ml::{Model, vanilla},
 };
 
 fn main() {
     let _no_grad = tch::no_grad_guard();
-    let arch = two_layers::<DotsAndBoxes>(8);
+    let arch = vanilla::<DotsAndBoxes>(3, 16);
     let mut model = Model::new::<DotsAndBoxes>(arch);
     model
-        .load(Path::new("./models/DotsAndBoxes/3.safetensors"))
+        .load(Path::new("./models/DotsAndBoxes/1.safetensors"))
         .unwrap();
 
     let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
     agents.push(Box::new(Human {}));
-    agents.push(Box::new(Search::new(&model, 10000, true, 1.41, 1.0, 0.01)));
+    agents.push(Box::new(Search::new(&model, 1000, true, 1.41, 1.0, 0.01)));
     agents.push(Box::new(Random {}));
     agents.push(Box::new(Random {}));
 
