@@ -1,13 +1,13 @@
 use tch::{
-    Tensor,
+    IndexOp, Tensor,
     nn::{self, Path, Sequential, VarStore},
 };
 
-use crate::{GameState, agents::Evaluator, ml::Image};
+use crate::{GameState, Player, agents::Evaluator, ml::Image};
 
 pub type Architecture = Box<dyn FnOnce(&Path) -> Sequential>;
 
-pub fn vanilla<G: Image>(layers: usize, hidden: i64) -> Architecture {
+pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> Architecture {
     assert!(layers > 1);
     Box::new(move |root: &Path<'_>| {
         let mut seq = nn::seq()
@@ -33,7 +33,7 @@ pub fn vanilla<G: Image>(layers: usize, hidden: i64) -> Architecture {
         seq = seq.add(nn::linear(
             root.clone() / "output",
             hidden,
-            1,
+            <G as GameState>::Player::LEN as i64,
             Default::default(),
         ));
         seq
@@ -82,8 +82,9 @@ impl Model {
 }
 
 impl<G: GameState + Image> Evaluator<G> for Model {
-    fn evaluate(&self, game_state: G) -> f32 {
+    fn evaluate(&self, game_state: G, arbiter: G::Player) -> f32 {
         let image = game_state.image();
-        self.infer(image).try_into().unwrap()
+        let p: usize = arbiter.into();
+        self.infer(image).i(p as i64).try_into().unwrap()
     }
 }

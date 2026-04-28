@@ -61,15 +61,15 @@ pub fn train(config: TrainingConfig) {
         let mut train_losses = vec![];
         for batch in &dataset_train.into_iter().chunks(config.batch_size) {
             let mut loss = Tensor::from(0f32);
-            for (state, value) in batch {
+            for (state, values) in batch {
                 let x = state.image();
-                let y = Tensor::from(value as f32);
+                let y = Tensor::from_slice(&values);
                 let output = model.infer(x);
                 loss += output.mse_loss(&y, tch::Reduction::Mean);
                 // dbg!(&x);
                 // dbg!(&y);
                 // let output: f32 = output.try_into().unwrap();
-                // dbg!(output);
+                dbg!(&output);
             }
             optimizer.backward_step(&loss);
             let loss: f32 = loss.try_into().unwrap();
@@ -87,9 +87,9 @@ pub fn train(config: TrainingConfig) {
         // Test
         let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
         let mut test_losses = vec![];
-        for (state, value) in dataset_test {
+        for (state, values) in dataset_test {
             let x = state.image();
-            let y = Tensor::from(value as f32);
+            let y = Tensor::from_slice(&values);
             let loss = model.infer(x).mse_loss(&y, tch::Reduction::Mean);
             let loss: f32 = loss.try_into().unwrap();
             test_losses.push(loss);

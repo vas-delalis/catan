@@ -119,7 +119,7 @@ impl Image for OddsGame {
 
 pub struct OddsEvaluator {}
 impl Evaluator<OddsGame> for OddsEvaluator {
-    fn evaluate(&self, game_state: OddsGame) -> f32 {
+    fn evaluate(&self, game_state: OddsGame, _: OddsGamePlayer) -> f32 {
         let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
         let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;
         let v = v * 2.0 - 1.0;
@@ -133,7 +133,7 @@ impl Evaluator<OddsGame> for OddsEvaluator {
 
 pub struct NormalizedOddsEvaluator {}
 impl Evaluator<OddsGame> for NormalizedOddsEvaluator {
-    fn evaluate(&self, game_state: OddsGame) -> f32 {
+    fn evaluate(&self, game_state: OddsGame, _: OddsGamePlayer) -> f32 {
         let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
         let v = v * 2.0 - 1.0;
         let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;
@@ -148,17 +148,6 @@ impl Evaluator<OddsGame> for NormalizedOddsEvaluator {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn t1() {
-        let mut g = OddsGame::new();
-        g.w = 3;
-        g.l = 1;
-        let e1 = OddsEvaluator {};
-        let e2 = NormalizedOddsEvaluator {};
-        dbg!(e1.evaluate(g.clone()));
-        dbg!(e2.evaluate(g));
-    }
 
     #[test]
     fn t2() {

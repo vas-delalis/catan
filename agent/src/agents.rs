@@ -18,7 +18,7 @@ impl ConstantEvaluator {
     }
 }
 impl<G: GameState> Evaluator<G> for ConstantEvaluator {
-    fn evaluate(&self, _: G) -> f32 {
+    fn evaluate(&self, _: G, _: G::Player) -> f32 {
         self.constant
     }
 }

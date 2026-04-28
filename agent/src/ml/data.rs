@@ -1,8 +1,8 @@
 use rand::seq::SliceRandom;
 
-use crate::{Agent, GameState};
+use crate::{Agent, GameState, Player};
 
-type Snapshot<G> = (G, f32);
+type Snapshot<G> = (G, [f32; 4]);
 
 pub struct Dataset<G: GameState> {
     replay_buffer: Vec<Snapshot<G>>,
@@ -33,8 +33,9 @@ impl<G: GameState> Dataset<G> {
             }
 
             for state in buffer {
-                let (_, value) = game.outcome(state.prev_player()).unwrap();
-                self.replay_buffer.push((state, value));
+                let players = G::Player::list();
+                let values: [f32; 4] = std::array::from_fn(|i| game.outcome(players[i]).unwrap().1);
+                self.replay_buffer.push((state, values));
             }
         }
         self.replay_buffer.shuffle(&mut rand::rng());

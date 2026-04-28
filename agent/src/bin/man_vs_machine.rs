@@ -9,10 +9,10 @@ use agent::{
 
 fn main() {
     let _no_grad = tch::no_grad_guard();
-    let arch = vanilla::<DotsAndBoxes>(3, 16);
+    let arch = vanilla::<DotsAndBoxes>(5, 16);
     let mut model = Model::new::<DotsAndBoxes>(arch);
     model
-        .load(Path::new("./models/DotsAndBoxes/1.safetensors"))
+        .load(Path::new("./models/DotsAndBoxes/5.safetensors"))
         .unwrap();
 
     let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
@@ -33,7 +33,11 @@ fn main() {
         let action = agent.get_action(game.clone());
         println!("{:?} {:?}", game.current_player(), action);
         game.apply_action(action);
-        println!("Value: {:.2}", model.evaluate(game.clone()));
+        print!("Values: ");
+        for p in DotsAndBoxesPlayer::list() {
+            print!("{:.2} ", model.evaluate(game.clone(), p));
+        }
+        println!();
     }
     for (i, &p) in <DotsAndBoxes as GameState>::Player::list()
         .iter()

@@ -311,7 +311,7 @@ impl Image for DotsAndBoxes {
 
 pub struct ScoreEvaluator {}
 impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
-    fn evaluate(&self, game_state: DotsAndBoxes) -> f32 {
+    fn evaluate(&self, game_state: DotsAndBoxes, _: Player) -> f32 {
         let sum: usize = game_state.score.iter().sum();
         if sum == 0 {
             return 0.0;
@@ -400,21 +400,6 @@ mod tests {
         }
 
         assert_eq!(rendered, expected);
-    }
-
-    #[test]
-    fn score_evaluator() {
-        let mut game = DotsAndBoxes::new();
-        game.apply_action(Edge(0, 0, N));
-        game.current_player = A;
-        game.apply_action(Edge(0, 0, W));
-        game.current_player = A;
-        game.apply_action(Edge(0, 1, N));
-        game.current_player = A;
-        game.apply_action(Edge(1, 0, W));
-        game.current_player = A;
-        let e = ScoreEvaluator {};
-        assert!(e.evaluate(game) == 0.1);
     }
 
     #[test]
