@@ -35,7 +35,7 @@ fn main() {
         game.apply_action(action);
         print!("Values: ");
         for p in DotsAndBoxesPlayer::list() {
-            print!("{:.2} ", model.evaluate(game.clone(), p));
+            print!("{:.2} ", model.evaluate(&game, p));
         }
         println!();
     }

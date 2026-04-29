@@ -82,7 +82,7 @@ impl Model {
 }
 
 impl<G: GameState + Image> Evaluator<G> for Model {
-    fn evaluate(&self, game_state: G, arbiter: G::Player) -> f32 {
+    fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
         let image = game_state.image();
         let p: usize = arbiter.into();
         self.infer(image).i(p as i64).try_into().unwrap()

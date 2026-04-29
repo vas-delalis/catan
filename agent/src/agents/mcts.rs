@@ -7,11 +7,11 @@ use rand_distr::{Distribution, Gamma};
 use crate::{Agent, GameState};
 
 pub trait Evaluator<G: GameState> {
-    fn evaluate(&self, game_state: G, arbiter: G::Player) -> f32;
+    fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32;
 }
 
 impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
-    fn evaluate(&self, game_state: G, arbiter: G::Player) -> f32 {
+    fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
         (**self).evaluate(game_state, arbiter)
     }
 }
@@ -93,7 +93,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
         let actions = game.get_actions(to_play);
 
-        let value = self.evaluator.evaluate(game.clone(), arbiter);
+        let value = self.evaluator.evaluate(game, arbiter);
 
         // Run inference
         let (_, policy_logits) = (value, vec![0f64; actions.len()]);

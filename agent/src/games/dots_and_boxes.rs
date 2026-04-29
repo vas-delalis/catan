@@ -311,7 +311,7 @@ impl Image for DotsAndBoxes {
 
 pub struct ScoreEvaluator {}
 impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
-    fn evaluate(&self, game_state: DotsAndBoxes, _: Player) -> f32 {
+    fn evaluate(&self, game_state: &DotsAndBoxes, _: Player) -> f32 {
         let sum: usize = game_state.score.iter().sum();
         if sum == 0 {
             return 0.0;
