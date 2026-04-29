@@ -1,5 +1,5 @@
-use std::fs;
 use std::path::PathBuf;
+use std::{fs, time::Instant};
 
 use crate::{
     GameState, Tournament,
@@ -25,7 +25,7 @@ pub struct TrainingConfig {
 }
 
 pub fn train(config: TrainingConfig) {
-    let arch = vanilla::<GAME>(3, 16);
+    let arch = vanilla::<GAME>(2, 16);
     let model = Model::new::<GAME>(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), config.learning_rate)
@@ -50,6 +50,7 @@ pub fn train(config: TrainingConfig) {
     tournament.leaderboard();
 
     println!("Training {} parameters...", model.parameter_count());
+    let start = Instant::now();
 
     for epoch in 1..=config.epochs {
         let mut dataset_train = Dataset::new(config.train_replays);
@@ -69,7 +70,7 @@ pub fn train(config: TrainingConfig) {
                 // dbg!(&x);
                 // dbg!(&y);
                 // let output: f32 = output.try_into().unwrap();
-                dbg!(&output);
+                // dbg!(&output);
             }
             optimizer.backward_step(&loss);
             let loss: f32 = loss.try_into().unwrap();
@@ -99,6 +100,8 @@ pub fn train(config: TrainingConfig) {
         let sum: f32 = test_losses.iter().sum();
         println!("[Test - Epoch {}] Loss {:.3}", epoch, sum / n as f32);
     }
+
+    println!("Training complete. Elapsed: {}s", start.elapsed().as_secs());
 
     let mut tournament: Tournament<GAME> = Tournament::new(0.05, 0.05);
     tournament.add(Box::new(agent.clone()), true);
