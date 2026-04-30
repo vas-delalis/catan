@@ -36,7 +36,6 @@ pub trait GameState: Clone {
     fn get_actions(&self, player: Self::Player) -> Vec<Self::Action>;
     fn apply_action(&mut self, action: Self::Action);
     fn current_player(&self) -> Self::Player;
-    fn prev_player(&self) -> Self::Player;
     fn is_terminal(&self) -> bool;
     fn outcome(&self, player: Self::Player) -> Option<(Outcome, f32)>;
     fn pairwise_outcome(

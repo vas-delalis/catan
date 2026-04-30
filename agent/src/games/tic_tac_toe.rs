@@ -87,14 +87,6 @@ impl GameState for TicTacToe {
         self.current_player
     }
 
-    fn prev_player(&self) -> Self::Player {
-        if self.current_player == TicTacToePlayer::X {
-            TicTacToePlayer::O
-        } else {
-            TicTacToePlayer::X
-        }
-    }
-
     fn apply_action(&mut self, mv: Cell) {
         self.board[mv.0 as usize] = Some(self.current_player);
         self.current_player = if self.current_player == TicTacToePlayer::X {

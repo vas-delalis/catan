@@ -2,7 +2,7 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Image};
 
-const WIDTH: usize = 2;
+const WIDTH: usize = 3;
 const HEIGHT: usize = 3;
 const N_EDGES: usize = 2 * WIDTH * HEIGHT + WIDTH + HEIGHT;
 
@@ -10,7 +10,6 @@ const N_EDGES: usize = 2 * WIDTH * HEIGHT + WIDTH + HEIGHT;
 pub struct DotsAndBoxes {
     pub board: HashSet<Edge>,
     current_player: Player,
-    prev_player: Player,
     pub score: [usize; 4],
 }
 
@@ -81,33 +80,9 @@ impl Edge {
             W => [Box(x - 1, y), Box(x, y)],
         }
     }
-
-    // fn neighbors(&self) -> Vec<Edge> {
-    //     let Edge(x, y, dir) = *self;
-    //     match dir {
-    //         N => [
-    //             (0, -1, N),
-    //             (0, -1, W),
-    //             (1, -1, W),
-    //             (0, 0, W),
-    //             (0, 1, N),
-    //             (1, 0, W),
-    //         ],
-    //         W => [
-    //             (-1, 1, N),
-    //             (-1, 0, N),
-    //             (-1, 0, W),
-    //             (0, 0, N),
-    //             (0, 1, N),
-    //             (1, 0, W),
-    //         ],
-    //     }
-    //     .into_iter()
-    //     .map(|(i, j, d)| Edge(x + i, y + j, d))
-    //     .filter(|e: &Edge| e.in_bounds())
-    //     .collect()
-    // }
 }
+
+// const EDGES: [Edge; N_EDGES] = Once
 
 impl DotsAndBoxes {
     fn winners(&self) -> Option<Vec<Player>> {
@@ -131,7 +106,6 @@ impl GameState for DotsAndBoxes {
     fn new() -> Self {
         DotsAndBoxes {
             board: HashSet::with_capacity(N_EDGES),
-            prev_player: A,
             current_player: A,
             score: [0, 0, 0, 0],
         }
@@ -156,10 +130,6 @@ impl GameState for DotsAndBoxes {
         self.current_player
     }
 
-    fn prev_player(&self) -> Self::Player {
-        self.prev_player
-    }
-
     fn apply_action(&mut self, e: Edge) {
         self.board.insert(e.clone());
         let [box1, box2] = e.boxes();
@@ -174,7 +144,6 @@ impl GameState for DotsAndBoxes {
                 end_turn = false;
             }
         }
-        self.prev_player = self.current_player;
         if end_turn {
             let players = Player::list();
             self.current_player = players[(self.current_player as usize + 1) % players.len()];
@@ -264,7 +233,7 @@ impl Display for DotsAndBoxes {
 }
 
 impl Image for DotsAndBoxes {
-    const IMAGE_SIZE: i64 = N_EDGES as i64 + 12;
+    const IMAGE_SIZE: i64 = N_EDGES as i64 + 8;
 
     fn image(&self) -> tch::Tensor {
         let mut planes = vec![0f32; N_EDGES];
@@ -288,12 +257,11 @@ impl Image for DotsAndBoxes {
         for i in 0..4 {
             score[i] = self.score[i] as f32 - max;
         }
-        let mut played = vec![0f32; 4];
-        played[self.prev_player() as usize] = 1.0;
+
         let mut to_play = vec![0f32; 4];
         to_play[self.current_player as usize] = 1.0;
 
-        Tensor::from_slice(&[planes, score, played, to_play].concat())
+        Tensor::from_slice(&[planes, score, to_play].concat())
     }
 }
 

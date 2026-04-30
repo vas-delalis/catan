@@ -69,14 +69,6 @@ impl GameState for OddsGame {
         self.to_play
     }
 
-    fn prev_player(&self) -> Self::Player {
-        if self.to_play == OddsGamePlayer::A {
-            OddsGamePlayer::B
-        } else {
-            OddsGamePlayer::A
-        }
-    }
-
     fn get_actions(&self, player: Self::Player) -> Vec<Self::Action> {
         assert!(player == self.to_play);
         let mut actions = vec![];
