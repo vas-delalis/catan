@@ -13,7 +13,7 @@ use tch::{
     nn::{self, OptimizerConfig},
 };
 
-type GAME = DotsAndBoxes;
+type GAME = DotsAndBoxes<3, 3>;
 
 pub struct TrainingConfig {
     pub epochs: usize,
@@ -25,7 +25,7 @@ pub struct TrainingConfig {
 }
 
 pub fn train(config: TrainingConfig) {
-    let arch = vanilla::<GAME>(2, 16);
+    let arch = vanilla::<GAME>(3, 16);
     let model = Model::new::<GAME>(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), config.learning_rate)
@@ -118,7 +118,7 @@ pub fn train(config: TrainingConfig) {
 
 fn get_save_path() -> PathBuf {
     let mut path = PathBuf::from("./models");
-    path.push(GAME::NAME);
+    path.push(GAME::name());
     fs::create_dir_all(&path).unwrap();
 
     // Get highest id in directory

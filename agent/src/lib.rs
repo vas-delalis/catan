@@ -28,10 +28,10 @@ pub enum Outcome {
 }
 
 pub trait GameState: Clone {
-    const NAME: &str;
     type Action: Action;
     type Player: Player;
 
+    fn name() -> String;
     fn new() -> Self;
     fn get_actions(&self, player: Self::Player) -> Vec<Self::Action>;
     fn apply_action(&mut self, action: Self::Action);

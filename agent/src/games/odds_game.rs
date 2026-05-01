@@ -38,9 +38,12 @@ impl Into<usize> for OddsGamePlayer {
 }
 
 impl GameState for OddsGame {
-    const NAME: &str = "OddsGame";
     type Action = OddsGameAction;
     type Player = OddsGamePlayer;
+
+    fn name() -> String {
+        "OddsGame".to_string()
+    }
 
     fn new() -> Self {
         OddsGame {

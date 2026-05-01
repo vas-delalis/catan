@@ -7,15 +7,17 @@ use agent::{
     ml::{Model, vanilla},
 };
 
+type GAME = DotsAndBoxes<3, 3>;
+
 fn main() {
     let _no_grad = tch::no_grad_guard();
-    let arch = vanilla::<DotsAndBoxes>(5, 16);
-    let mut model = Model::new::<DotsAndBoxes>(arch);
+    let arch = vanilla::<GAME>(5, 16);
+    let mut model = Model::new::<GAME>(arch);
     model
         .load(Path::new("./models/DotsAndBoxes/5.safetensors"))
         .unwrap();
 
-    let mut agents: Vec<Box<dyn Agent<DotsAndBoxes>>> = Vec::new();
+    let mut agents: Vec<Box<dyn Agent<GAME>>> = Vec::new();
     agents.push(Box::new(Human {}));
     agents.push(Box::new(Search::new(&model, 1000, true, 1.41, 1.0, 0.01)));
     agents.push(Box::new(Random {}));
@@ -39,10 +41,7 @@ fn main() {
         }
         println!();
     }
-    for (i, &p) in <DotsAndBoxes as GameState>::Player::list()
-        .iter()
-        .enumerate()
-    {
+    for (i, &p) in <GAME as GameState>::Player::list().iter().enumerate() {
         println!("{:?} {} {:?}", p, game.score[i], game.outcome(p).unwrap())
     }
 }
