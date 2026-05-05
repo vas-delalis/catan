@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::{fs, time::Instant};
 
 use crate::{
-    GameState, Tournament,
+    GameState, Player, Tournament,
     agents::{ConstantEvaluator, Search},
     games::DotsAndBoxes,
     ml::{Image, Model, data::Dataset, vanilla},
@@ -13,7 +13,7 @@ use tch::{
     nn::{self, OptimizerConfig},
 };
 
-type GAME = DotsAndBoxes<3, 3>;
+type GAME = DotsAndBoxes<5, 5>;
 
 pub struct TrainingConfig {
     pub epochs: usize,
@@ -25,7 +25,7 @@ pub struct TrainingConfig {
 }
 
 pub fn train(config: TrainingConfig) {
-    let arch = vanilla::<GAME>(3, 16);
+    let arch = vanilla::<GAME>(2, 2);
     let model = Model::new::<GAME>(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), config.learning_rate)
@@ -41,7 +41,7 @@ pub fn train(config: TrainingConfig) {
         0.01,
     );
 
-    let mut tournament: Tournament<GAME> = Tournament::new(0.1, 0.1);
+    let mut tournament: Tournament<GAME> = Tournament::new(0.25, 0.25);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), false);
@@ -59,30 +59,35 @@ pub fn train(config: TrainingConfig) {
         dataset_test.selfplay(&agent);
 
         // Train
-        let mut train_losses = vec![];
+        let mut train_loss = 0.0;
+        let n_states = dataset_train.len();
         for batch in &dataset_train.into_iter().chunks(config.batch_size) {
-            let mut loss = Tensor::from(0f32);
+            let mut images = Vec::with_capacity(config.batch_size);
+            let mut targets = Vec::with_capacity(config.batch_size);
             for (state, values) in batch {
                 let x = state.image();
                 let y = Tensor::from_slice(&values);
-                let output = model.infer(x);
-                loss += output.mse_loss(&y, tch::Reduction::Mean);
+                images.push(x);
+                targets.push(y);
                 // dbg!(&x);
                 // dbg!(&y);
                 // let output: f32 = output.try_into().unwrap();
                 // dbg!(&output);
             }
+            let images = Tensor::stack(&images, 1).transpose(0, 1);
+            let targets = Tensor::stack(&targets, 1).transpose(0, 1);
+            let output = model.infer(images);
+            let loss = output.mse_loss(&targets, tch::Reduction::Sum);
+
             optimizer.backward_step(&loss);
             let loss: f32 = loss.try_into().unwrap();
-            train_losses.push(loss);
+            train_loss += loss;
         }
 
-        let n = train_losses.len();
-        let sum: f32 = train_losses.iter().sum();
-        println!(
-            "[Train - Epoch {}] Loss {:.3}",
+        print!(
+            "[Epoch {}] Train: {:.3} / ",
             epoch,
-            sum / n as f32 / config.batch_size as f32
+            train_loss / n_states as f32 / <GAME as GameState>::Player::LEN as f32
         );
 
         // Test
@@ -98,7 +103,7 @@ pub fn train(config: TrainingConfig) {
 
         let n = test_losses.len();
         let sum: f32 = test_losses.iter().sum();
-        println!("[Test - Epoch {}] Loss {:.3}", epoch, sum / n as f32);
+        println!("Test: {:.3}", sum / n as f32);
     }
 
     println!("Training complete. Elapsed: {}s", start.elapsed().as_secs());

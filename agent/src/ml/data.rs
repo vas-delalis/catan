@@ -12,7 +12,7 @@ pub struct Dataset<G: GameState> {
 impl<G: GameState> Dataset<G> {
     pub fn new(replay_count: usize) -> Self {
         Dataset {
-            replay_buffer: vec![],
+            replay_buffer: Vec::with_capacity(replay_count),
             replay_count,
         }
     }
