@@ -6,7 +6,12 @@ use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Im
 pub struct DotsAndBoxes<const R: usize, const C: usize> {
     pub board: HashSet<Edge>,
     current_player: Player,
-    pub score: [usize; 4],
+    pub score: [u8; 4],
+}
+
+#[derive(Clone)]
+pub struct MockDotsAndBoxes<const R: usize, const C: usize> {
+    i: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +43,6 @@ pub enum Dir {
 }
 
 use Dir::*;
-use tch::Tensor;
 
 pub struct Box(i8, i8);
 
@@ -112,8 +116,8 @@ impl<const R: usize, const C: usize> GameState for DotsAndBoxes<R, C> {
 
     fn get_actions(&self, _player: Player) -> Vec<Edge> {
         let mut edges: Vec<Edge> = vec![];
-        for x in -1..=(C as i8 + 1) {
-            for y in -1..=(R as i8 + 1) {
+        for x in 0..=(C as i8 + 1) {
+            for y in 0..=(R as i8 + 1) {
                 for dir in [N, W] {
                     let e = Edge(x as i8, y as i8, dir);
                     if self.in_bounds(&e) && !self.board.contains(&e) {
@@ -187,6 +191,47 @@ impl<const R: usize, const C: usize> GameState for DotsAndBoxes<R, C> {
     }
 }
 
+impl<const R: usize, const C: usize> GameState for MockDotsAndBoxes<R, C> {
+    type Action = Edge;
+    type Player = Player;
+
+    fn new() -> Self {
+        MockDotsAndBoxes { i: 0 }
+    }
+
+    fn is_terminal(&self) -> bool {
+        self.i == 25
+    }
+
+    fn name() -> String {
+        format!("DotsAndBoxes{}x{}", R, C)
+    }
+
+    fn outcome(&self, _: Self::Player) -> Option<(Outcome, f32)> {
+        if self.is_terminal() {
+            Some((Outcome::Win, 1.0))
+        } else {
+            None
+        }
+    }
+
+    fn pairwise_outcome(&self, _: Self::Player, _: Self::Player) -> Option<(Outcome, f32)> {
+        None
+    }
+
+    fn get_actions(&self, _: Self::Player) -> Vec<Self::Action> {
+        vec![Edge(0, 0, N); 2 * R * C + R + C - self.i as usize]
+    }
+
+    fn current_player(&self) -> Self::Player {
+        Player::list()[(self.i % 4) as usize]
+    }
+
+    fn apply_action(&mut self, _: Self::Action) {
+        self.i += 1;
+    }
+}
+
 impl<const R: usize, const C: usize> Display for DotsAndBoxes<R, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut grid = String::new();
@@ -235,11 +280,12 @@ impl<const R: usize, const C: usize> Image for DotsAndBoxes<R, C> {
     const IMAGE_SIZE: i64 = Self::N_EDGES as i64 + 8;
 
     fn image(&self) -> tch::Tensor {
+        use tch::Tensor;
         let mut planes = vec![0f32; Self::N_EDGES];
 
         let mut count = 0;
-        for x in -1..=(C as i8 + 1) {
-            for y in -1..=(R as i8 + 1) {
+        for x in 0..=(C as i8 + 1) {
+            for y in 0..=(R as i8 + 1) {
                 for dir in [N, W] {
                     let e = Edge(x as i8, y as i8, dir);
                     if self.in_bounds(&e) {
@@ -279,7 +325,7 @@ impl<const R: usize, const C: usize> Image for DotsAndBoxes<R, C> {
 pub struct ScoreEvaluator {}
 impl<const R: usize, const C: usize> Evaluator<DotsAndBoxes<R, C>> for ScoreEvaluator {
     fn evaluate(&self, game_state: &DotsAndBoxes<R, C>, _: Player) -> f32 {
-        let sum: usize = game_state.score.iter().sum();
+        let sum: u8 = game_state.score.iter().sum();
         if sum == 0 {
             return 0.0;
         }
