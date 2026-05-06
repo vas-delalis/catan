@@ -1,10 +1,10 @@
-use std::{collections::HashSet, fmt::Display, hash::Hash};
+use std::{fmt::Display, hash::Hash, sync::LazyLock};
 
 use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Image};
 
 #[derive(Clone)]
 pub struct DotsAndBoxes<const R: usize, const C: usize> {
-    pub board: HashSet<Edge>,
+    pub board: u64,
     current_player: Player,
     pub score: [u8; 4],
 }
@@ -44,7 +44,7 @@ pub enum Dir {
 
 use Dir::*;
 
-pub struct Box(i8, i8);
+pub struct Box(u8, u8);
 
 impl Box {
     fn edges(&self) -> Vec<Edge> {
@@ -59,30 +59,110 @@ impl Box {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Edge(pub i8, pub i8, pub Dir);
+pub struct Edge(pub u8, pub u8, pub Dir);
 
 impl Edge {
-    fn boxes(&self) -> [Box; 2] {
-        let Edge(x, y, _) = *self;
-        match self.2 {
-            N => [Box(x, y - 1), Box(x, y)],
-            W => [Box(x - 1, y), Box(x, y)],
+    fn from_index(i: usize) -> Self {
+        if i < C * (R + 1) {
+            let x = i % C;
+            let y = i / C;
+            Edge(x as u8, y as u8, N)
+        } else {
+            let i = i - (C * (R + 1));
+            let x = i % (C + 1);
+            let y = i / (C + 1);
+            Edge(x as u8, y as u8, W)
         }
     }
-}
 
-impl<const R: usize, const C: usize> DotsAndBoxes<R, C> {
-    const N_EDGES: usize = 2 * R * C + R + C;
+    fn boxes(&self) -> [Box; 2] {
+        let Edge(x, y, dir) = *self;
+        match dir {
+            N => [Box(x, y.saturating_sub(1)), Box(x, y)],
+            W => [Box(x.saturating_sub(1), y), Box(x, y)],
+        }
+    }
 
-    fn in_bounds(&self, e: &Edge) -> bool {
-        let Edge(x, y, dir) = *e;
-        let w = C as i8;
-        let h = R as i8;
+    fn index(&self) -> usize {
+        let Edge(x, y, dir) = *self;
+        let x: usize = x.into();
+        let y: usize = y.into();
+        let i = y * C + x;
+        match dir {
+            N => i,
+            W => C * (R + 1) + i + y,
+        }
+    }
+
+    fn in_bounds(&self) -> bool {
+        let Edge(x, y, dir) = *self;
+        let w = C as u8;
+        let h = R as u8;
         let bound = match dir {
             Dir::N => x < w && y <= h,
             Dir::W => x <= w && y < h,
         };
-        bound && 0 <= x && 0 <= y
+        bound
+    }
+}
+
+const R: usize = 5;
+const C: usize = 5;
+const N_EDGES: usize = 2 * R * C + R + C;
+
+static BOXES: LazyLock<[(u64, u64); N_EDGES]> = LazyLock::new(|| {
+    std::array::from_fn(|i| {
+        let e = Edge::from_index(i);
+        assert_eq!(e.index(), i);
+        let [box1, box2] = e.boxes();
+        let [box1, box2] = [box1.edges(), box2.edges()];
+        let mut mask1: u64 = 0;
+        let mut mask2: u64 = 0;
+
+        for e in box1 {
+            if e.in_bounds() {
+                mask1 |= 1 << e.index();
+            }
+        }
+        for e in box2 {
+            if e.in_bounds() {
+                mask2 |= 1 << e.index();
+            }
+        }
+        (mask1, mask2)
+    })
+});
+
+impl<const R: usize, const C: usize> DotsAndBoxes<R, C> {
+    const N_EDGES: usize = 2 * R * C + R + C;
+    // N: C(R + 1)
+    // W: R(C + 1)
+
+    fn index(&self, e: &Edge) -> usize {
+        let Edge(x, y, dir) = *e;
+        let x: usize = x.into();
+        let y: usize = y.into();
+        let i = y * C + x;
+        match dir {
+            N => i,
+            W => C * (R + 1) + i + y,
+        }
+    }
+
+    fn contains(&self, e: &Edge) -> bool {
+        let bit: u64 = 1 << self.index(e);
+        bit & self.board > 0
+    }
+
+    fn in_bounds(&self, e: &Edge) -> bool {
+        let Edge(x, y, dir) = *e;
+        let w = C as u8;
+        let h = R as u8;
+        let bound = match dir {
+            Dir::N => x < w && y <= h,
+            Dir::W => x <= w && y < h,
+        };
+        bound
     }
 
     fn winners(&self) -> Option<Vec<Player>> {
@@ -108,25 +188,17 @@ impl<const R: usize, const C: usize> GameState for DotsAndBoxes<R, C> {
 
     fn new() -> Self {
         DotsAndBoxes {
-            board: HashSet::with_capacity(Self::N_EDGES),
+            board: 0,
             current_player: Player::A,
             score: [0, 0, 0, 0],
         }
     }
 
     fn get_actions(&self, _player: Player) -> Vec<Edge> {
-        let mut edges: Vec<Edge> = vec![];
-        for x in 0..=(C as i8 + 1) {
-            for y in 0..=(R as i8 + 1) {
-                for dir in [N, W] {
-                    let e = Edge(x as i8, y as i8, dir);
-                    if self.in_bounds(&e) && !self.board.contains(&e) {
-                        edges.push(e);
-                    }
-                }
-            }
-        }
-        edges
+        (0..N_EDGES)
+            .filter(|i| self.board & (1 << i) == 0)
+            .map(|i| Edge::from_index(i))
+            .collect()
     }
 
     fn current_player(&self) -> Player {
@@ -134,19 +206,21 @@ impl<const R: usize, const C: usize> GameState for DotsAndBoxes<R, C> {
     }
 
     fn apply_action(&mut self, e: Edge) {
-        self.board.insert(e.clone());
-        let [box1, box2] = e.boxes();
-        let boxes = [box1.edges(), box2.edges()];
+        let idx = self.index(&e);
+        self.board |= 1 << idx;
+
+        let (b1, b2) = BOXES[idx];
         let mut end_turn = true;
-        for b in boxes {
-            if b.into_iter()
-                .map(|e| self.board.get(&e))
-                .all(|o| o.is_some())
-            {
-                self.score[self.current_player as usize] += 1;
-                end_turn = false;
-            }
+
+        if (b1 & self.board).count_ones() == 4 {
+            self.score[self.current_player as usize] += 1;
+            end_turn = false;
         }
+        if b1 != b2 && (b2 & self.board).count_ones() == 4 {
+            self.score[self.current_player as usize] += 1;
+            end_turn = false;
+        }
+
         if end_turn {
             let players = Player::list();
             self.current_player = players[(self.current_player as usize + 1) % players.len()];
@@ -187,7 +261,7 @@ impl<const R: usize, const C: usize> GameState for DotsAndBoxes<R, C> {
     }
 
     fn is_terminal(&self) -> bool {
-        self.board.len() == Self::N_EDGES
+        self.board.count_ones() == Self::N_EDGES as u32
     }
 }
 
@@ -235,15 +309,15 @@ impl<const R: usize, const C: usize> GameState for MockDotsAndBoxes<R, C> {
 impl<const R: usize, const C: usize> Display for DotsAndBoxes<R, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut grid = String::new();
-        let h = R as i8;
-        let w = C as i8;
+        let h = R as u8;
+        let w = C as u8;
 
         for y in 0..=h {
             // Dot row with horizontal edges
             for x in 0..w {
                 grid.push('.');
                 let e = Edge(x, y, N);
-                if let Some(_) = self.board.get(&e) {
+                if self.contains(&e) {
                     grid.push('-');
                     grid.push('-');
                     grid.push('-');
@@ -258,7 +332,7 @@ impl<const R: usize, const C: usize> Display for DotsAndBoxes<R, C> {
             if y < h {
                 for x in 0..=w {
                     let e = Edge(x, y, W);
-                    if let Some(_) = self.board.get(&e) {
+                    if self.contains(&e) {
                         grid.push('|');
                     } else {
                         grid.push(' ');
@@ -284,12 +358,12 @@ impl<const R: usize, const C: usize> Image for DotsAndBoxes<R, C> {
         let mut planes = vec![0f32; Self::N_EDGES];
 
         let mut count = 0;
-        for x in 0..=(C as i8 + 1) {
-            for y in 0..=(R as i8 + 1) {
+        for x in 0..=(C as u8 + 1) {
+            for y in 0..=(R as u8 + 1) {
                 for dir in [N, W] {
-                    let e = Edge(x as i8, y as i8, dir);
+                    let e = Edge(x as u8, y as u8, dir);
                     if self.in_bounds(&e) {
-                        if self.board.contains(&e) {
+                        if self.contains(&e) {
                             planes[count] = 1.0;
                         }
                         count += 1;
@@ -313,7 +387,7 @@ impl<const R: usize, const C: usize> Image for DotsAndBoxes<R, C> {
 // pub struct TopsideEvaluator {}
 // impl Evaluator<DotsAndBoxes> for TopsideEvaluator {
 //     fn evaluate(&self, game_state: DotsAndBoxes) -> f64 {
-//         let limit = ((WIDTH + 1) / 2) as i8;
+//         let limit = ((WIDTH + 1) / 2) as u8;
 //         let all_topside = game_state
 //             .board
 //             .iter()
@@ -348,8 +422,8 @@ mod tests {
     //     assert!(!Edge(-1, 0, N).in_bounds());
     //     assert!(!Edge(0, -1, N).in_bounds());
     //     assert!(Edge(0, 0, N).in_bounds());
-    //     assert!(Edge(WIDTH as i8, 0, W).in_bounds());
-    //     assert!(Edge(0, HEIGHT as i8, N).in_bounds());
+    //     assert!(Edge(WIDTH as u8, 0, W).in_bounds());
+    //     assert!(Edge(0, HEIGHT as u8, N).in_bounds());
     // }
 
     #[test]
@@ -424,5 +498,25 @@ mod tests {
         game.apply_action(Edge(0, 0, N));
         let b: Vec<f32> = game.image().try_into().unwrap();
         dbg!(b);
+    }
+
+    #[test]
+    fn index() {
+        let game: DotsAndBoxes<2, 3> = DotsAndBoxes::new();
+        for a in game.get_actions(Player::A) {
+            println!("{}", game.index(&a));
+        }
+    }
+
+    #[test]
+    fn get_actions() {
+        let mut game: DotsAndBoxes<R, C> = DotsAndBoxes::new();
+        let actions = game.get_actions(Player::A);
+        assert_eq!(actions.len(), N_EDGES);
+        game.apply_action(actions[1]);
+        dbg!(&game.board);
+        let actions = game.get_actions(Player::B);
+        assert_eq!(actions.len(), N_EDGES - 1);
+        // dbg!(&actions);
     }
 }
