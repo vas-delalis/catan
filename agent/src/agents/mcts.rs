@@ -76,14 +76,16 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
     }
 
-    fn score(&self, parent: &Node<G>, child: &Node<G>) -> f64 {
-        let mut pb_c =
-            ((parent.visits as f64 + self.pb_c_base + 1.0) / self.pb_c_base).ln() + self.pb_c_init;
-        pb_c *= f64::sqrt(parent.visits as f64) / (child.visits as f64 + 1.0);
-
-        let prior_score = pb_c * child.prior;
+    fn score(&self, parent: &Node<G>, child: &Node<G>) -> f32 {
+        let prior_score = {
+            let mut pb_c =
+                ((parent.visits as f32 + self.pb_c_base as f32 + 1.0) / self.pb_c_base as f32).ln()
+                    + self.pb_c_init as f32;
+            pb_c *= f32::sqrt(parent.visits as f32) / (child.visits as f32 + 1.0);
+            pb_c * child.prior as f32
+        };
         let value_score = child.value();
-        prior_score + value_score
+        prior_score + value_score as f32
     }
 
     fn evaluate<'a>(&self, node: &'a mut Box<Node<G>>, game: &G, arbiter: G::Player) -> f64 {
@@ -93,14 +95,14 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
         let actions = game.get_actions(to_play);
 
-        let value = self.evaluator.evaluate(game, arbiter);
-
         // Run inference
+        let value = self.evaluator.evaluate(game, arbiter);
         let (_, policy_logits) = (value, vec![0f64; actions.len()]);
         let policy: Vec<f64> = policy_logits.into_iter().map(|l| l.exp()).collect();
         let sum: f64 = policy.iter().sum();
 
         // Expand node (initialize children)
+        node.children.reserve(actions.len());
         for (action, p) in actions.iter().zip(policy) {
             let child = Node::new(p / sum);
             node.children.insert(*action, Box::new(child));
@@ -120,7 +122,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             let mut search_path: Vec<G::Action> = vec![];
 
             while !node.children.is_empty() {
-                let (action, _) = self.select_child(node);
+                let action = self.select_child(node);
                 node = node.children.get_mut(&action).unwrap();
                 scratch.apply_action(action);
                 search_path.push(action);
@@ -170,14 +172,13 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         softmax_sample(visit_counts)
     }
 
-    fn select_child<'a>(&self, node: &'a Node<G>) -> (G::Action, &'a Box<Node<G>>) {
-        let (&action, child) = node
+    fn select_child<'a>(&self, node: &'a Node<G>) -> G::Action {
+        let (&action, _) = node
             .children
             .iter()
             .max_by(|(_, a), (_, b)| self.score(node, a).total_cmp(&self.score(node, b)))
             .unwrap();
-
-        (action, child)
+        action
     }
 
     fn add_exploration_noise(&self, node: &mut Node<G>) {
