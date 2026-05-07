@@ -6,7 +6,7 @@
 // Verts |  Robber   | Sett. plcmnt | Sett. plcmnt
 // Edges |     ?     | Road plcmnt  | Road plcmnt
 
-use std::sync::{LazyLock, OnceLock};
+use std::sync::LazyLock;
 
 use enum_map::{enum_map, Enum, EnumMap};
 
@@ -17,15 +17,15 @@ use crate::{
     Bitboard, Edge, HexBoard, E, V,
 };
 
-static BOARD_DATA: OnceLock<SharedBoardData> = OnceLock::new();
+// static BOARD_DATA: OnceLock<SharedBoardData> = OnceLock::new();
 pub static ADJACENCY: LazyLock<Adjacency> = LazyLock::new(|| Adjacency::new());
 pub static ROAD_TRAILS: LazyLock<RoadTrailTable> = LazyLock::new(|| RoadTrailTableLoader::load());
 // static HEX_BOARD: OnceLock<HexBoard> = OnceLock::new();
 // static HEX_DATA: OnceLock<HexData> = OnceLock::new();
 
-pub fn init_board_data(resources: Vec<Option<Resource>>, rolls: Vec<Option<u8>>) {
-    BOARD_DATA.get_or_init(|| SharedBoardData::new(resources, rolls));
-}
+// pub fn init_board_data(resources: Vec<Option<Resource>>, rolls: Vec<Option<u8>>) {
+//     BOARD_DATA.get_or_init(|| SharedBoardData::new(resources, rolls));
+// }
 
 pub struct Adjacency {
     pub hex_to_verts: Vec<Bitboard<V>>,
@@ -36,10 +36,10 @@ pub struct Adjacency {
     pub edge_to_edges: Vec<Bitboard<E>>,
 }
 
-pub struct HexData {
-    pub resources: Vec<Option<Resource>>,
-    pub rolls: Vec<Option<u8>>,
-}
+// pub struct HexData {
+//     pub resources: Vec<Option<Resource>>,
+//     pub rolls: Vec<Option<u8>>,
+// }
 
 impl Adjacency {
     pub fn new() -> Self {
