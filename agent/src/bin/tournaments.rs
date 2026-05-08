@@ -7,7 +7,7 @@ use agent::{
     ml::{Model, vanilla},
 };
 
-type GAME = DotsAndBoxes<3, 3>;
+type GAME = DotsAndBoxes;
 
 fn main() {
     let _no_grad = tch::no_grad_guard();

@@ -7,19 +7,19 @@ use agent::{
     ml::{Model, vanilla},
 };
 
-type GAME = DotsAndBoxes<3, 3>;
+type GAME = DotsAndBoxes;
 
 fn main() {
     let _no_grad = tch::no_grad_guard();
-    let arch = vanilla::<GAME>(5, 16);
+    let arch = vanilla::<GAME>(2, 16);
     let mut model = Model::new::<GAME>(arch);
     model
-        .load(Path::new("./models/DotsAndBoxes/5.safetensors"))
+        .load(Path::new("./models/DotsAndBoxes5x5/0.safetensors"))
         .unwrap();
 
     let mut agents: Vec<Box<dyn Agent<GAME>>> = Vec::new();
     agents.push(Box::new(Human {}));
-    agents.push(Box::new(Search::new(&model, 1000, true, 1.41, 1.0, 0.01)));
+    agents.push(Box::new(Search::new(&model, 0, true, 1.41, 1.0, 0.01)));
     agents.push(Box::new(Random {}));
     agents.push(Box::new(Random {}));
 

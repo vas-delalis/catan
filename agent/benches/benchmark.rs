@@ -11,7 +11,7 @@ fn dots_and_boxes(c: &mut Criterion) {
     let agent = Random {};
     group.bench_function("DotsAndBoxes5x5", |b| {
         b.iter(|| {
-            let mut game: DotsAndBoxes<5, 5> = DotsAndBoxes::new();
+            let mut game: DotsAndBoxes = DotsAndBoxes::new();
             while !game.is_terminal() {
                 game.apply_action(agent.get_action(game.clone()));
             }
@@ -19,7 +19,7 @@ fn dots_and_boxes(c: &mut Criterion) {
     });
     group.bench_function("MockDotsAndBoxes5x5", |b| {
         b.iter(|| {
-            let mut game: MockDotsAndBoxes<5, 5> = MockDotsAndBoxes::new();
+            let mut game: MockDotsAndBoxes = MockDotsAndBoxes::new();
             while !game.is_terminal() {
                 game.apply_action(agent.get_action(game.clone()));
             }
@@ -34,7 +34,7 @@ fn mcts(c: &mut Criterion) {
         let agent = Search::new(ConstantEvaluator::new(0.0), evals, true, 1.41, 1.0, 0.01);
         group.bench_with_input(BenchmarkId::from_parameter(evals), &evals, |b, _| {
             b.iter(|| {
-                let mut game: DotsAndBoxes<5, 5> = DotsAndBoxes::new();
+                let mut game: DotsAndBoxes = DotsAndBoxes::new();
                 while !game.is_terminal() {
                     game.apply_action(agent.get_action(game.clone()));
                 }
@@ -49,7 +49,7 @@ fn mcts(c: &mut Criterion) {
         let agent = Search::new(ConstantEvaluator::new(0.0), evals, true, 1.41, 1.0, 0.01);
         group.bench_with_input(BenchmarkId::from_parameter(evals), &evals, |b, _| {
             b.iter(|| {
-                let mut game: MockDotsAndBoxes<5, 5> = MockDotsAndBoxes::new();
+                let mut game: MockDotsAndBoxes = MockDotsAndBoxes::new();
                 while !game.is_terminal() {
                     game.apply_action(agent.get_action(game.clone()));
                 }

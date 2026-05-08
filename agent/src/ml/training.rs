@@ -13,7 +13,7 @@ use tch::{
     nn::{self, OptimizerConfig},
 };
 
-type GAME = DotsAndBoxes<5, 5>;
+type GAME = DotsAndBoxes;
 
 pub struct TrainingConfig {
     pub epochs: usize,
