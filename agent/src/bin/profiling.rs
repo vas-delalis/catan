@@ -13,5 +13,6 @@ fn main() {
             game.apply_action(action);
             agent.inform(action);
         }
+        agent.reset();
     }
 }
