@@ -125,9 +125,8 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
 
         if root.children.is_empty() {
             self.evaluate(&mut root, &game_state, arbiter);
+            self.add_exploration_noise(&mut root);
         }
-
-        self.add_exploration_noise(&mut root);
 
         for _ in 0..self.max_evals {
             let mut node = &mut root;
