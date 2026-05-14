@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 
 use rand::{rng, seq::index::sample_weighted};
 use rand_distr::{Distribution, Gamma};
@@ -55,7 +54,6 @@ pub struct Search<G: GameState, E: Evaluator<G>> {
     max_evals: usize,
     evaluator: E,
     tree: std::cell::RefCell<Option<(G, Box<Node<G>>)>>,
-    _phantom: PhantomData<G>,
 }
 
 impl<G: GameState, E: Evaluator<G>> Search<G, E> {
@@ -75,7 +73,6 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             pb_c_init,
             dirichlet_alpha,
             tree: std::cell::RefCell::new(None),
-            _phantom: PhantomData,
         }
     }
 
@@ -113,15 +110,9 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         value as f64
     }
 
-    pub fn run(&self, game_state: G) -> G::Action {
+    pub fn run(&self) -> G::Action {
+        let (game_state, mut root) = self.tree.borrow_mut().take().unwrap();
         let arbiter = game_state.current_player();
-
-        let mut root = self
-            .tree
-            .borrow_mut()
-            .take()
-            .map(|(_, node)| node)
-            .unwrap_or_else(|| Box::new(Node::new(0.0)));
 
         if root.children.is_empty() {
             self.evaluate(&mut root, &game_state, arbiter);
@@ -154,10 +145,9 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
 
         let action = self.select_action(&root, self.greedy);
-
         *self.tree.borrow_mut() = Some((game_state, root));
 
-        return action;
+        action
     }
 
     fn select_action(&self, root: &Node<G>, greedy: bool) -> G::Action {
@@ -191,7 +181,10 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
 
 impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
     fn get_action(&self, game_state: G) -> G::Action {
-        self.run(game_state)
+        if self.tree.borrow().is_none() {
+            *self.tree.borrow_mut() = Some((game_state, Box::new(Node::new(0.0))));
+        }
+        self.run()
     }
 
     fn inform(&self, action: G::Action) {
