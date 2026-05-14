@@ -33,6 +33,7 @@ impl<G: GameState> Dataset<G> {
                     buffer.push(game.clone());
                 }
             }
+            agent.reset();
 
             for state in buffer {
                 let players = G::Player::list();

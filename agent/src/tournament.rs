@@ -193,6 +193,9 @@ impl<'a, G: GameState> Tournament<'a, G> {
                     self.roster[*a].agent.inform(action);
                 }
             }
+            for a in agents.iter() {
+                self.roster[*a].agent.reset();
+            }
             games_played += 1;
 
             // Tally results and run tests

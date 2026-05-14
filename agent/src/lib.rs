@@ -11,6 +11,7 @@ pub use tournament::Tournament;
 pub trait Agent<G: GameState> {
     fn get_action(&self, game_state: G) -> G::Action;
     fn inform(&self, _action: G::Action) {}
+    fn reset(&self) {}
 }
 
 pub trait Action: Hash + Eq + Copy + Debug {}

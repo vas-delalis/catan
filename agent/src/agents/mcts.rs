@@ -198,6 +198,10 @@ impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
             }
         }
     }
+
+    fn reset(&self) {
+        self.tree.borrow_mut().take();
+    }
 }
 
 fn softmax_sample<A: Copy>(vec: Vec<(u16, A)>) -> A {
