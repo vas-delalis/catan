@@ -26,7 +26,9 @@ impl<G: GameState> Dataset<G> {
             let mut game = G::new();
             let mut buffer = vec![];
             while !game.is_terminal() {
-                game.apply_action(agent.get_action(game.clone()));
+                let action = agent.get_action(game.clone());
+                game.apply_action(action);
+                agent.inform(action);
                 if rand::random_ratio(1, 5) {
                     buffer.push(game.clone());
                 }

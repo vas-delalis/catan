@@ -2,14 +2,14 @@ use std::{fmt::Display, hash::Hash, sync::LazyLock};
 
 use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Image};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct DotsAndBoxes {
     pub board: u64,
     current_player: Player,
     pub score: [u8; 4],
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct MockDotsAndBoxes {
     i: u8,
 }

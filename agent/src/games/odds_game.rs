@@ -6,7 +6,7 @@ use crate::{GameState, Outcome, Player, agents::Evaluator, ml::Image};
 
 const DENOMINATOR: u32 = 100;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OddsGame {
     w: u32,
     l: u32,

@@ -9,7 +9,9 @@ fn main() {
     for _ in 0..100 {
         let mut game = DotsAndBoxes::new();
         while !game.is_terminal() {
-            game.apply_action(agent.get_action(game.clone()));
+            let action = agent.get_action(game.clone());
+            game.apply_action(action);
+            agent.inform(action);
         }
     }
 }

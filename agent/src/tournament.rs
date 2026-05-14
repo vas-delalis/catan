@@ -189,6 +189,9 @@ impl<'a, G: GameState> Tournament<'a, G> {
                 let agent = &self.roster[agents[idx]].agent;
                 let action = agent.get_action(scratch);
                 game.apply_action(action);
+                for a in agents.iter() {
+                    self.roster[*a].agent.inform(action);
+                }
             }
             games_played += 1;
 

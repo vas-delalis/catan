@@ -16,6 +16,7 @@ impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
     }
 }
 
+#[derive(Clone)]
 pub struct Node<G: GameState> {
     visits: u16,
     children: HashMap<G::Action, Box<Node<G>>>,
@@ -53,6 +54,7 @@ pub struct Search<G: GameState, E: Evaluator<G>> {
     // so for chess, with its branching factor of ~35, we get alpha = .3
     max_evals: usize,
     evaluator: E,
+    tree: std::cell::RefCell<Option<(G, Box<Node<G>>)>>,
     _phantom: PhantomData<G>,
 }
 
@@ -72,6 +74,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             pb_c_base,
             pb_c_init,
             dirichlet_alpha,
+            tree: std::cell::RefCell::new(None),
             _phantom: PhantomData,
         }
     }
@@ -110,10 +113,20 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         value as f64
     }
 
-    pub fn run(&self, mut game_state: G) -> G::Action {
+    pub fn run(&self, game_state: G) -> G::Action {
         let arbiter = game_state.current_player();
-        let mut root = Box::new(Node::new(0.0));
-        self.evaluate(&mut root, &mut game_state, arbiter);
+
+        let mut root = self
+            .tree
+            .borrow_mut()
+            .take()
+            .map(|(_, node)| node)
+            .unwrap_or_else(|| Box::new(Node::new(0.0)));
+
+        if root.children.is_empty() {
+            self.evaluate(&mut root, &game_state, arbiter);
+        }
+
         self.add_exploration_noise(&mut root);
 
         for _ in 0..self.max_evals {
@@ -140,27 +153,12 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
                 node.visits += 1;
             }
         }
-        // let mut q: Vec<(Option<G::Action>, &Node<G>, usize)> = Vec::new();
-        // q.push((None, &root, 0));
-        // while let Some((action, node, level)) = q.pop() {
-        //     if level > 6 || node.visits == 0 {
-        //         continue;
-        //     }
-        //     print!("{}", &String::from(" ").repeat(level));
-        //     println!(
-        //         "{:?} {:?} {} {:.1}{}",
-        //         node.played,
-        //         action,
-        //         node.visits,
-        //         node.value(),
-        //         if node.children.is_empty() { "!" } else { "" }
-        //     );
-        //     for (&action, child) in node.children.iter() {
-        //         q.push((Some(action), child, level + 1));
-        //     }
-        // }
 
-        return self.select_action(&root, self.greedy);
+        let action = self.select_action(&root, self.greedy);
+
+        *self.tree.borrow_mut() = Some((game_state, root));
+
+        return action;
     }
 
     fn select_action(&self, root: &Node<G>, greedy: bool) -> G::Action {
@@ -195,6 +193,18 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
 impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
     fn get_action(&self, game_state: G) -> G::Action {
         self.run(game_state)
+    }
+
+    fn inform(&self, action: G::Action) {
+        let mut tree_opt = self.tree.borrow_mut();
+        if let Some((mut state, mut node)) = tree_opt.take() {
+            state.apply_action(action);
+            *tree_opt = if let Some(child) = node.children.remove(&action) {
+                Some((state, child))
+            } else {
+                Some((state, Box::new(Node::new(0.0))))
+            }
+        }
     }
 }
 

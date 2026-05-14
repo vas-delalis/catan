@@ -33,6 +33,7 @@ impl Hash for Cell {
 }
 
 #[derive(Debug, Clone)]
+#[derive(PartialEq)]
 pub struct TicTacToe {
     pub board: [Option<TicTacToePlayer>; 9],
     current_player: TicTacToePlayer,

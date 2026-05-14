@@ -10,6 +10,7 @@ pub use tournament::Tournament;
 
 pub trait Agent<G: GameState> {
     fn get_action(&self, game_state: G) -> G::Action;
+    fn inform(&self, _action: G::Action) {}
 }
 
 pub trait Action: Hash + Eq + Copy + Debug {}
@@ -27,7 +28,7 @@ pub enum Outcome {
     Loss,
 }
 
-pub trait GameState: Clone {
+pub trait GameState: Clone + PartialEq {
     type Action: Action;
     type Player: Player;
 

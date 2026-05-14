@@ -35,6 +35,9 @@ fn main() {
         let action = agent.get_action(game.clone());
         println!("{:?} {:?}", game.current_player(), action);
         game.apply_action(action);
+        for a in agents.iter() {
+            a.inform(action);
+        }
         print!("Values: ");
         for p in DotsAndBoxesPlayer::list() {
             print!("{:.2} ", model.evaluate(&game, p));

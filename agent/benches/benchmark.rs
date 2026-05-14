@@ -36,7 +36,9 @@ fn mcts(c: &mut Criterion) {
             b.iter(|| {
                 let mut game: DotsAndBoxes = DotsAndBoxes::new();
                 while !game.is_terminal() {
-                    game.apply_action(agent.get_action(game.clone()));
+                    let action = agent.get_action(game.clone());
+                    game.apply_action(action);
+                    agent.inform(action);
                 }
             });
         });
@@ -51,7 +53,9 @@ fn mcts(c: &mut Criterion) {
             b.iter(|| {
                 let mut game: MockDotsAndBoxes = MockDotsAndBoxes::new();
                 while !game.is_terminal() {
-                    game.apply_action(agent.get_action(game.clone()));
+                    let action = agent.get_action(game.clone());
+                    game.apply_action(action);
+                    agent.inform(action);
                 }
             });
         });
