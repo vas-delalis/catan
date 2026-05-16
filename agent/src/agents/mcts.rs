@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 
 use rand::{rng, seq::index::sample_weighted};
 use rand_distr::{Distribution, Gamma};
@@ -18,7 +18,7 @@ impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
 #[derive(Clone)]
 pub struct Node<G: GameState> {
     visits: u16,
-    children: HashMap<G::Action, Box<Node<G>>>,
+    children: HashMap<G::Action, Node<G>>,
     prior: f64, // TODO: smaller? quantized?
     total_value: f64,
 }
@@ -53,7 +53,7 @@ pub struct Search<G: GameState, E: Evaluator<G>> {
     // so for chess, with its branching factor of ~35, we get alpha = .3
     max_evals: usize,
     evaluator: E,
-    tree: std::cell::RefCell<Option<(G, Box<Node<G>>)>>,
+    tree: RefCell<Option<(G, Node<G>)>>,
 }
 
 impl<G: GameState, E: Evaluator<G>> Search<G, E> {
@@ -72,10 +72,11 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             pb_c_base,
             pb_c_init,
             dirichlet_alpha,
-            tree: std::cell::RefCell::new(None),
+            tree: RefCell::new(None),
         }
     }
 
+    #[inline(always)]
     fn score(&self, parent: &Node<G>, child: &Node<G>) -> f32 {
         let prior_score = {
             let mut pb_c =
@@ -88,7 +89,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         prior_score + value_score as f32
     }
 
-    fn evaluate<'a>(&self, node: &'a mut Box<Node<G>>, game: &G, arbiter: G::Player) -> f64 {
+    fn evaluate<'a>(&self, node: &'a mut Node<G>, game: &G, arbiter: G::Player) -> f64 {
         let to_play = game.current_player();
         if let Some((_, value)) = game.outcome(arbiter) {
             return value as f64;
@@ -105,7 +106,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         node.children.reserve(actions.len());
         for (action, p) in actions.iter().zip(policy) {
             let child = Node::new(p / sum);
-            node.children.insert(*action, Box::new(child));
+            node.children.insert(*action, child);
         }
         value as f64
     }
@@ -182,7 +183,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
 impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
     fn get_action(&self, game_state: G) -> G::Action {
         if self.tree.borrow().is_none() {
-            *self.tree.borrow_mut() = Some((game_state, Box::new(Node::new(0.0))));
+            *self.tree.borrow_mut() = Some((game_state, Node::new(0.0)));
         }
         self.run()
     }
@@ -194,7 +195,7 @@ impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
             *tree_opt = if let Some(child) = node.children.remove(&action) {
                 Some((state, child))
             } else {
-                Some((state, Box::new(Node::new(0.0))))
+                Some((state, Node::new(0.0)))
             }
         }
     }

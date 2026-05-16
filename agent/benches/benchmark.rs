@@ -40,6 +40,7 @@ fn mcts(c: &mut Criterion) {
                     game.apply_action(action);
                     agent.inform(action);
                 }
+                agent.reset();
             });
         });
     }
@@ -57,6 +58,7 @@ fn mcts(c: &mut Criterion) {
                     game.apply_action(action);
                     agent.inform(action);
                 }
+                agent.reset();
             });
         });
     }
