@@ -76,19 +76,6 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
     }
 
-    #[inline(always)]
-    fn score(&self, parent: &Node<G>, child: &Node<G>) -> f32 {
-        let prior_score = {
-            let mut pb_c =
-                ((parent.visits as f32 + self.pb_c_base as f32 + 1.0) / self.pb_c_base as f32).ln()
-                    + self.pb_c_init as f32;
-            pb_c *= f32::sqrt(parent.visits as f32) / (child.visits as f32 + 1.0);
-            pb_c * child.prior as f32
-        };
-        let value_score = child.value();
-        prior_score + value_score as f32
-    }
-
     fn evaluate<'a>(&self, node: &'a mut Node<G>, game: &G, arbiter: G::Player) -> f64 {
         let to_play = game.current_player();
         if let Some((_, value)) = game.outcome(arbiter) {
@@ -161,11 +148,24 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     }
 
     fn select_child<'a>(&self, node: &'a Node<G>) -> G::Action {
+        let pb_c_base = self.pb_c_base as f32;
+        let pb_c_init = self.pb_c_init as f32;
+        let parent_visits = node.visits as f32;
+
+        let pb_c = ((parent_visits + pb_c_base + 1.0) / pb_c_base).ln() + pb_c_init;
+        let pb_c = pb_c * parent_visits.sqrt();
+
         let (&action, _) = node
             .children
             .iter()
-            .max_by(|(_, a), (_, b)| self.score(node, a).total_cmp(&self.score(node, b)))
+            .map(|(action, child)| {
+                let prior_score = pb_c * (child.prior as f32) / (child.visits as f32 + 1.0);
+                let score = prior_score + child.value() as f32;
+                (action, score)
+            })
+            .max_by(|(_, a_score), (_, b_score)| a_score.total_cmp(b_score))
             .unwrap();
+
         action
     }
 
