@@ -6,7 +6,7 @@ use crate::{GameState, Outcome, Player, agents::Evaluator, ml::Image};
 
 const DENOMINATOR: u32 = 100;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct OddsGame {
     w: u32,
     l: u32,
@@ -14,7 +14,7 @@ pub struct OddsGame {
     winner: Option<OddsGamePlayer>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub struct OddsGameAction(u32, u32);
 
 impl From<usize> for OddsGameAction {
@@ -29,7 +29,7 @@ impl Into<usize> for OddsGameAction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OddsGamePlayer {
     A,
     B,

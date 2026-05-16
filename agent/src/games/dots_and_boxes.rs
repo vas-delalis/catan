@@ -1,20 +1,20 @@
-use std::{fmt::Display, hash::Hash, sync::LazyLock};
+use std::{fmt::Display, sync::LazyLock};
 
 use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Image};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct DotsAndBoxes {
     pub board: u64,
     current_player: Player,
     pub score: [u8; 4],
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct MockDotsAndBoxes {
     i: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Player {
     A,
     B,
@@ -36,7 +36,7 @@ impl Into<usize> for Player {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Dir {
     N,
     W,
@@ -44,7 +44,7 @@ pub enum Dir {
 
 use Dir::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Edge(pub u8, pub u8, pub Dir);
 
 impl Edge {

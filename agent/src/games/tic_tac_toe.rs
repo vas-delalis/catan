@@ -1,10 +1,10 @@
-use std::hash::{Hash, Hasher};
+
 
 use tch::Tensor;
 
 use crate::{GameState, Outcome, Player, ml::Image};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TicTacToePlayer {
     X,
     O,
@@ -23,7 +23,7 @@ impl Into<usize> for TicTacToePlayer {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cell(pub u8); // board position 0-8
 
 impl Into<usize> for Cell {
@@ -38,13 +38,8 @@ impl From<usize> for Cell {
     }
 }
 
-impl Hash for Cell {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TicTacToe {
     pub board: [Option<TicTacToePlayer>; 9],
     current_player: TicTacToePlayer,

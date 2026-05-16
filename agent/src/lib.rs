@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::hash::Hash;
+
 
 pub mod agents;
 pub mod games;
@@ -14,10 +14,10 @@ pub trait Agent<G: GameState> {
     fn reset(&self) {}
 }
 
-pub trait Action: Hash + Eq + Copy + Debug + Into<usize> + From<usize> {}
-impl<T: Hash + Eq + Copy + Debug + Into<usize> + From<usize>> Action for T {}
+pub trait Action: Copy + Debug + Into<usize> + From<usize> {}
+impl<T: Copy + Debug + Into<usize> + From<usize>> Action for T {}
 
-pub trait Player: Copy + Eq + Debug + Into<usize> {
+pub trait Player: Copy + PartialEq + Debug + Into<usize> {
     const LEN: usize;
     fn list() -> Vec<Self>;
 }
@@ -29,7 +29,7 @@ pub enum Outcome {
     Loss,
 }
 
-pub trait GameState: Clone + PartialEq {
+pub trait GameState: Clone {
     type Action: Action;
     type Player: Player;
 
