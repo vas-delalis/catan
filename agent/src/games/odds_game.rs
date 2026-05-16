@@ -17,6 +17,18 @@ pub struct OddsGame {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OddsGameAction(u32, u32);
 
+impl From<usize> for OddsGameAction {
+    fn from(val: usize) -> Self {
+        OddsGameAction((val >> 32) as u32, val as u32)
+    }
+}
+
+impl Into<usize> for OddsGameAction {
+    fn into(self) -> usize {
+        ((self.0 as usize) << 32) | (self.1 as usize)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OddsGamePlayer {
     A,

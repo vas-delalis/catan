@@ -14,8 +14,8 @@ pub trait Agent<G: GameState> {
     fn reset(&self) {}
 }
 
-pub trait Action: Hash + Eq + Copy + Debug {}
-impl<T: Hash + Eq + Copy + Debug> Action for T {}
+pub trait Action: Hash + Eq + Copy + Debug + Into<usize> + From<usize> {}
+impl<T: Hash + Eq + Copy + Debug + Into<usize> + From<usize>> Action for T {}
 
 pub trait Player: Copy + Eq + Debug + Into<usize> {
     const LEN: usize;

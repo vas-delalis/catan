@@ -1,7 +1,7 @@
-use std::{cell::RefCell, collections::HashMap};
-
+use nohash_hasher::IntMap;
 use rand::{rng, seq::index::sample_weighted};
 use rand_distr::{Distribution, Gamma};
+use std::cell::RefCell;
 
 use crate::{Agent, GameState};
 
@@ -16,18 +16,18 @@ impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
 }
 
 #[derive(Clone)]
-pub struct Node<G: GameState> {
+pub struct Node {
     visits: u16,
-    children: HashMap<G::Action, Node<G>>,
+    children: IntMap<usize, Node>,
     prior: f64, // TODO: smaller? quantized?
     total_value: f64,
 }
 
-impl<G: GameState> Node<G> {
+impl Node {
     pub fn new(prior: f64) -> Self {
         Node {
             prior,
-            children: HashMap::new(),
+            children: IntMap::default(),
             visits: 0,
             total_value: 0.0,
         }
@@ -53,7 +53,7 @@ pub struct Search<G: GameState, E: Evaluator<G>> {
     // so for chess, with its branching factor of ~35, we get alpha = .3
     max_evals: usize,
     evaluator: E,
-    tree: RefCell<Option<(G, Node<G>)>>,
+    tree: RefCell<Option<(G, Node)>>,
 }
 
 impl<G: GameState, E: Evaluator<G>> Search<G, E> {
@@ -76,7 +76,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
     }
 
-    fn evaluate<'a>(&self, node: &'a mut Node<G>, game: &G, arbiter: G::Player) -> f64 {
+    fn evaluate<'a>(&self, node: &'a mut Node, game: &G, arbiter: G::Player) -> f64 {
         let to_play = game.current_player();
         if let Some((_, value)) = game.outcome(arbiter) {
             return value as f64;
@@ -91,9 +91,9 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
 
         // Expand node (initialize children)
         node.children.reserve(actions.len());
-        for (action, p) in actions.iter().zip(policy) {
+        for (&action, p) in actions.iter().zip(policy) {
             let child = Node::new(p / sum);
-            node.children.insert(*action, child);
+            node.children.insert(action.into(), child);
         }
         value as f64
     }
@@ -114,7 +114,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
 
             while !node.children.is_empty() {
                 let action = self.select_child(node);
-                node = node.children.get_mut(&action).unwrap();
+                node = node.children.get_mut(&action.into()).unwrap();
                 scratch.apply_action(action);
                 search_path.push(action);
             }
@@ -126,7 +126,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             root.visits += 1;
             let mut node = &mut root;
             for a in search_path {
-                node = node.children.get_mut(&a).unwrap();
+                node = node.children.get_mut(&a.into()).unwrap();
                 node.total_value += value;
                 node.visits += 1;
             }
@@ -138,16 +138,19 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         action
     }
 
-    fn select_action(&self, root: &Node<G>, greedy: bool) -> G::Action {
-        let visit_counts: Vec<(u16, <G as GameState>::Action)> =
-            root.children.iter().map(|(&a, v)| (v.visits, a)).collect();
+    fn select_action(&self, root: &Node, greedy: bool) -> G::Action {
+        let visit_counts: Vec<(u16, <G as GameState>::Action)> = root
+            .children
+            .iter()
+            .map(|(&a, v)| (v.visits, G::Action::from(a)))
+            .collect();
         if greedy {
             return visit_counts.iter().max_by_key(|(c, _)| c).unwrap().1;
         }
         softmax_sample(visit_counts)
     }
 
-    fn select_child<'a>(&self, node: &'a Node<G>) -> G::Action {
+    fn select_child<'a>(&self, node: &'a Node) -> G::Action {
         let pb_c_base = self.pb_c_base as f32;
         let pb_c_init = self.pb_c_init as f32;
         let parent_visits = node.visits as f32;
@@ -166,10 +169,10 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             .max_by(|(_, a_score), (_, b_score)| a_score.total_cmp(b_score))
             .unwrap();
 
-        action
+        G::Action::from(action)
     }
 
-    fn add_exploration_noise(&self, node: &mut Node<G>) {
+    fn add_exploration_noise(&self, node: &mut Node) {
         let mut rng = rng();
         let gamma = Gamma::new(self.dirichlet_alpha, 1.0).unwrap();
         let fraction = 0.25; // TODO: parameterize
@@ -192,7 +195,7 @@ impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
         let mut tree_opt = self.tree.borrow_mut();
         if let Some((mut state, mut node)) = tree_opt.take() {
             state.apply_action(action);
-            *tree_opt = if let Some(child) = node.children.remove(&action) {
+            *tree_opt = if let Some(child) = node.children.remove(&action.into()) {
                 Some((state, child))
             } else {
                 Some((state, Node::new(0.0)))

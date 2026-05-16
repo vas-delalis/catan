@@ -26,14 +26,25 @@ impl Into<usize> for TicTacToePlayer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cell(pub u8); // board position 0-8
 
+impl Into<usize> for Cell {
+    fn into(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl From<usize> for Cell {
+    fn from(val: usize) -> Self {
+        Cell(val as u8)
+    }
+}
+
 impl Hash for Cell {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state);
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TicTacToe {
     pub board: [Option<TicTacToePlayer>; 9],
     current_player: TicTacToePlayer,
