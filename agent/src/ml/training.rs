@@ -25,6 +25,7 @@ pub struct TrainingConfig {
     pub test_replays: usize,
     pub batch_size: usize,
     pub search_evals: usize,
+    pub dirichlet_alpha: f64,
 }
 
 pub fn train(config: TrainingConfig) {
@@ -36,14 +37,21 @@ pub fn train(config: TrainingConfig) {
         .build(model.var_store(), config.learning_rate)
         .unwrap();
 
-    let agent = Search::new(&model, config.search_evals, false, 1.41, 1.0, 0.01);
+    let agent = Search::new(
+        &model,
+        config.search_evals,
+        false,
+        1.41,
+        1.0,
+        config.dirichlet_alpha,
+    );
     let reference_agent = Search::new(
         ConstantEvaluator::new(0.0),
         config.search_evals,
         false,
         1.41,
         1.0,
-        0.01,
+        config.dirichlet_alpha,
     );
 
     let mut tournament: Tournament<GAME> = Tournament::new(0.25, 0.25);
