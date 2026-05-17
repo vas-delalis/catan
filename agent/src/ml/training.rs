@@ -54,7 +54,7 @@ pub fn train(config: TrainingConfig) {
         config.dirichlet_alpha,
     );
 
-    let mut tournament: Tournament<GAME> = Tournament::new(0.25, 0.25);
+    let mut tournament: Tournament<GAME> = Tournament::new(0.05, 0.05);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), false);

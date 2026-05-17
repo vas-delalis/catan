@@ -1,8 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
+    sync::atomic::{AtomicBool, Ordering},
     time::Instant,
 };
 
+static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+
+use ctrlc;
 use rand::{rng, seq::SliceRandom};
 
 use crate::{Agent, GameState, Outcome, Player};
@@ -142,6 +146,11 @@ impl<'a, G: GameState> Tournament<'a, G> {
     }
 
     pub fn play(&mut self) {
+        let _ = ctrlc::set_handler(move || {
+            INTERRUPTED.store(true, Ordering::SeqCst);
+        });
+        INTERRUPTED.store(false, Ordering::SeqCst);
+
         let player_count = G::Player::LEN;
         assert!(self.roster.len() >= player_count);
         println!("Running tournament with {} agents", self.roster.len());
@@ -153,6 +162,12 @@ impl<'a, G: GameState> Tournament<'a, G> {
         let to_test = self.matchups.iter().filter(|(_, m)| m.evaluate).count();
 
         while results < to_test {
+            if INTERRUPTED.load(Ordering::SeqCst) {
+                println!("\r\x1b[KStopping tournament...");
+                //        ^ Clear "^C"
+                break;
+            }
+
             // Select agents
             let mut agents = HashSet::with_capacity(player_count);
             for (matchup, _) in self
@@ -222,6 +237,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
                     let (outcome, _) = game.pairwise_outcome(players[i], players[j]).unwrap();
                     let matchup = self.matchups.get_mut(&(id1, id2)).unwrap();
                     matchup.update(outcome);
+
                     if matchup.evaluate
                         && matchup.test_result.is_none()
                         && let Some(result) = matchup

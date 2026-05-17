@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 catan = { path = "../catan" }
+ctrlc = "3.5.2"
 itertools = "0.14.0"
 nohash-hasher = "0.2.0"
 rand = "0.9.2"
