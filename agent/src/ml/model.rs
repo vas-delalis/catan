@@ -1,15 +1,40 @@
+use std::{error::Error, path::Path as FSPath};
+
+use serde::{Deserialize, Serialize};
 use tch::{
     IndexOp, Tensor,
-    nn::{self, Path, Sequential, VarStore},
+    nn::{self, Path as VSPath, Sequential, VarStore},
 };
 
-use crate::{GameState, Player, agents::Evaluator, ml::Image};
+use crate::{
+    GameState, Player,
+    agents::Evaluator,
+    ml::{Image, TrainingConfig},
+};
 
-pub type Architecture = Box<dyn FnOnce(&Path) -> Sequential>;
+pub struct Model {
+    layers: Sequential,
+    vs: VarStore,
+}
 
-pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> Architecture {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelConfig {
+    pub game: String,
+    pub layers: usize,
+    pub hidden_dim: i64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Metadata {
+    pub model_config: ModelConfig,
+    pub training_config: TrainingConfig,
+}
+
+pub type CreateLayers = Box<dyn FnOnce(&VSPath) -> Sequential>;
+
+pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers {
     assert!(layers > 1);
-    Box::new(move |root: &Path<'_>| {
+    Box::new(move |root: &VSPath<'_>| {
         let mut seq = nn::seq()
             .add(nn::linear(
                 root.clone() / "layer1",
@@ -40,20 +65,49 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> Architecture
     })
 }
 
-pub struct Model {
-    layers: Sequential,
-    vs: VarStore,
-}
-
 impl Model {
-    pub fn new<G: Image>(config: Architecture) -> Self {
+    pub fn new<G: Image>(create_layers: CreateLayers) -> Self {
         let device = tch::Device::Cpu;
-        let vs = nn::VarStore::new(device);
+        let vs = VarStore::new(device);
         let root = vs.root();
         Model {
-            layers: config(&root),
+            layers: create_layers(&root),
             vs,
         }
+    }
+
+    pub fn load<G: GameState + Image>(path: &FSPath) -> Result<(Self, Metadata), Box<dyn Error>> {
+        let metadata_path = path.with_extension("json");
+        let metadata_json = std::fs::read_to_string(metadata_path)?;
+        let metadata: Metadata = serde_json::from_str(&metadata_json)?;
+
+        let vs = VarStore::new(tch::Device::Cpu);
+        let root = vs.root();
+
+        let create_layers = vanilla::<G>(
+            metadata.model_config.layers,
+            metadata.model_config.hidden_dim,
+        );
+
+        let mut model = Model {
+            layers: create_layers(&root),
+            vs,
+        };
+        model.vs.load(path)?;
+
+        Ok((model, metadata))
+    }
+
+    pub fn save_with_metadata(
+        &self,
+        path: &FSPath,
+        metadata: &Metadata,
+    ) -> Result<(), Box<dyn Error>> {
+        self.vs.save(path)?;
+        let metadata_path = path.with_extension("json");
+        let config_json = serde_json::to_string_pretty(metadata)?;
+        std::fs::write(metadata_path, config_json)?;
+        Ok(())
     }
 
     pub fn var_store(&self) -> &VarStore {
@@ -70,14 +124,6 @@ impl Model {
             .iter()
             .map(|t| t.numel())
             .sum()
-    }
-
-    pub fn save(&self, path: &std::path::Path) -> Result<(), tch::TchError> {
-        self.vs.save(path)
-    }
-
-    pub fn load(&mut self, path: &std::path::Path) -> Result<(), tch::TchError> {
-        self.vs.load(path)
     }
 }
 

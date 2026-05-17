@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::{fs, time::Instant};
 
+use crate::ml::model::{Metadata, ModelConfig};
 use crate::{
     GameState, Player, Tournament,
     agents::{ConstantEvaluator, Search},
@@ -8,6 +9,7 @@ use crate::{
     ml::{Image, Model, data::Dataset, vanilla},
 };
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use tch::{
     Tensor,
     nn::{self, OptimizerConfig},
@@ -15,6 +17,7 @@ use tch::{
 
 type GAME = DotsAndBoxes;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingConfig {
     pub epochs: usize,
     pub learning_rate: f64,
@@ -25,7 +28,9 @@ pub struct TrainingConfig {
 }
 
 pub fn train(config: TrainingConfig) {
-    let arch = vanilla::<GAME>(2, 2);
+    let hidden_dim = 16;
+    let layers = 2;
+    let arch = vanilla::<GAME>(layers, hidden_dim);
     let model = Model::new::<GAME>(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), config.learning_rate)
@@ -69,10 +74,6 @@ pub fn train(config: TrainingConfig) {
                 let y = Tensor::from_slice(&values);
                 images.push(x);
                 targets.push(y);
-                // dbg!(&x);
-                // dbg!(&y);
-                // let output: f32 = output.try_into().unwrap();
-                // dbg!(&output);
             }
             let images = Tensor::stack(&images, 1).transpose(0, 1);
             let targets = Tensor::stack(&targets, 1).transpose(0, 1);
@@ -117,7 +118,19 @@ pub fn train(config: TrainingConfig) {
     tournament.leaderboard();
 
     let path = get_save_path();
-    model.save(&path).unwrap();
+    model
+        .save_with_metadata(
+            &path,
+            &Metadata {
+                model_config: ModelConfig {
+                    game: GAME::name(),
+                    layers,
+                    hidden_dim,
+                },
+                training_config: config,
+            },
+        )
+        .unwrap();
     println!("Saved as {}", &path.file_name().unwrap().to_string_lossy());
 }
 

@@ -1,5 +1,3 @@
-
-
 use tch::Tensor;
 
 use crate::{GameState, Outcome, Player, ml::Image};
@@ -37,7 +35,6 @@ impl From<usize> for Cell {
         Cell(val as u8)
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct TicTacToe {

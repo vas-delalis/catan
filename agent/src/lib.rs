@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-
 pub mod agents;
 pub mod games;
 pub mod ml;

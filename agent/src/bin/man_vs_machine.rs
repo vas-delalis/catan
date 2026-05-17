@@ -4,18 +4,15 @@ use agent::{
     Agent, GameState, Player,
     agents::{Evaluator, Human, Random, Search},
     games::{DotsAndBoxes, DotsAndBoxesPlayer},
-    ml::{Model, vanilla},
+    ml::Model,
 };
 
 type GAME = DotsAndBoxes;
 
 fn main() {
     let _no_grad = tch::no_grad_guard();
-    let arch = vanilla::<GAME>(2, 16);
-    let mut model = Model::new::<GAME>(arch);
-    model
-        .load(Path::new("./models/DotsAndBoxes5x5/0.safetensors"))
-        .unwrap();
+    let (model, _) =
+        Model::load::<GAME>(Path::new("./models/DotsAndBoxes5x5/2.safetensors")).unwrap();
 
     let mut agents: Vec<Box<dyn Agent<GAME>>> = Vec::new();
     agents.push(Box::new(Human {}));
