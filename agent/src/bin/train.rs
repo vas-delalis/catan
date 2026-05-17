@@ -1,13 +1,9 @@
 use agent::ml::{TrainingConfig, train};
+use std::fs;
 
-fn main() {
-    train(TrainingConfig {
-        epochs: 5,
-        train_replays: 2000,
-        test_replays: 200,
-        batch_size: 10,
-        learning_rate: 1e-3,
-        search_evals: 10,
-        dirichlet_alpha: 0.005,
-    });
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config_json = fs::read_to_string("training_config.json")?;
+    let config: TrainingConfig = serde_json::from_str(&config_json)?;
+    train(config);
+    Ok(())
 }

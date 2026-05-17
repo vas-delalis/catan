@@ -1,0 +1,16 @@
+{
+  "model_config": {
+    "game": "DotsAndBoxes",
+    "layers": 2,
+    "hidden_dim": 16
+  },
+  "hyperparameters": {
+    "epochs": 5,
+    "search_evals": 100,
+    "batch_size": 10,
+    "learning_rate": 0.001,
+    "train_replays": 2000,
+    "test_replays": 200,
+    "dirichlet_alpha": 0.005
+  }
+}

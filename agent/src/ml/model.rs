@@ -1,6 +1,5 @@
 use std::{error::Error, path::Path as FSPath};
 
-use serde::{Deserialize, Serialize};
 use tch::{
     IndexOp, Tensor,
     nn::{self, Path as VSPath, Sequential, VarStore},
@@ -15,19 +14,6 @@ use crate::{
 pub struct Model {
     layers: Sequential,
     vs: VarStore,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelConfig {
-    pub game: String,
-    pub layers: usize,
-    pub hidden_dim: i64,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Metadata {
-    pub model_config: ModelConfig,
-    pub training_config: TrainingConfig,
 }
 
 pub type CreateLayers = Box<dyn FnOnce(&VSPath) -> Sequential>;
@@ -76,18 +62,18 @@ impl Model {
         }
     }
 
-    pub fn load<G: GameState + Image>(path: &FSPath) -> Result<(Self, Metadata), Box<dyn Error>> {
-        let metadata_path = path.with_extension("json");
-        let metadata_json = std::fs::read_to_string(metadata_path)?;
-        let metadata: Metadata = serde_json::from_str(&metadata_json)?;
+    pub fn load<G: GameState + Image>(
+        path: &FSPath,
+    ) -> Result<(Self, TrainingConfig), Box<dyn Error>> {
+        let config_path = path.with_extension("json");
+        let config_json = std::fs::read_to_string(config_path)?;
+        let config: TrainingConfig = serde_json::from_str(&config_json)?;
 
         let vs = VarStore::new(tch::Device::Cpu);
         let root = vs.root();
 
-        let create_layers = vanilla::<G>(
-            metadata.model_config.layers,
-            metadata.model_config.hidden_dim,
-        );
+        let create_layers =
+            vanilla::<G>(config.model_config.layers, config.model_config.hidden_dim);
 
         let mut model = Model {
             layers: create_layers(&root),
@@ -95,18 +81,18 @@ impl Model {
         };
         model.vs.load(path)?;
 
-        Ok((model, metadata))
+        Ok((model, config))
     }
 
-    pub fn save_with_metadata(
+    pub fn save_with_config(
         &self,
         path: &FSPath,
-        metadata: &Metadata,
+        config: &TrainingConfig,
     ) -> Result<(), Box<dyn Error>> {
         self.vs.save(path)?;
-        let metadata_path = path.with_extension("json");
-        let config_json = serde_json::to_string_pretty(metadata)?;
-        std::fs::write(metadata_path, config_json)?;
+        let config_path = path.with_extension("json");
+        let config_json = serde_json::to_string_pretty(config)?;
+        std::fs::write(config_path, config_json)?;
         Ok(())
     }
 

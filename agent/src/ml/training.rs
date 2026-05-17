@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::{fs, time::Instant};
 
-use crate::ml::model::{Metadata, ModelConfig};
+use crate::ml::TrainingConfig;
 use crate::{
     GameState, Player, Tournament,
     agents::{ConstantEvaluator, Search},
@@ -9,7 +9,6 @@ use crate::{
     ml::{Image, Model, data::Dataset, vanilla},
 };
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tch::{
     Tensor,
     nn::{self, OptimizerConfig},
@@ -17,41 +16,31 @@ use tch::{
 
 type GAME = DotsAndBoxes;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrainingConfig {
-    pub epochs: usize,
-    pub learning_rate: f64,
-    pub train_replays: usize,
-    pub test_replays: usize,
-    pub batch_size: usize,
-    pub search_evals: usize,
-    pub dirichlet_alpha: f64,
-}
-
 pub fn train(config: TrainingConfig) {
-    let hidden_dim = 16;
-    let layers = 2;
-    let arch = vanilla::<GAME>(layers, hidden_dim);
+    let model_config = config.model_config.clone();
+    let params = config.hyperparameters.clone();
+
+    let arch = vanilla::<GAME>(model_config.layers, model_config.hidden_dim);
     let model = Model::new::<GAME>(arch);
     let mut optimizer = nn::Adam::default()
-        .build(model.var_store(), config.learning_rate)
+        .build(model.var_store(), params.learning_rate)
         .unwrap();
 
     let agent = Search::new(
         &model,
-        config.search_evals,
+        params.search_evals,
         false,
         1.41,
         1.0,
-        config.dirichlet_alpha,
+        params.dirichlet_alpha,
     );
     let reference_agent = Search::new(
         ConstantEvaluator::new(0.0),
-        config.search_evals,
+        params.search_evals,
         false,
         1.41,
         1.0,
-        config.dirichlet_alpha,
+        params.dirichlet_alpha,
     );
 
     let mut tournament: Tournament<GAME> = Tournament::new(0.05, 0.05);
@@ -65,18 +54,18 @@ pub fn train(config: TrainingConfig) {
     println!("Training {} parameters...", model.parameter_count());
     let start = Instant::now();
 
-    for epoch in 1..=config.epochs {
-        let mut dataset_train = Dataset::new(config.train_replays);
-        let mut dataset_test = Dataset::new(config.test_replays);
+    for epoch in 1..=params.epochs {
+        let mut dataset_train = Dataset::new(params.train_replays);
+        let mut dataset_test = Dataset::new(params.test_replays);
         dataset_train.selfplay(&agent);
         dataset_test.selfplay(&agent);
 
         // Train
         let mut train_loss = 0.0;
         let n_states = dataset_train.len();
-        for batch in &dataset_train.into_iter().chunks(config.batch_size) {
-            let mut images = Vec::with_capacity(config.batch_size);
-            let mut targets = Vec::with_capacity(config.batch_size);
+        for batch in &dataset_train.into_iter().chunks(params.batch_size) {
+            let mut images = Vec::with_capacity(params.batch_size);
+            let mut targets = Vec::with_capacity(params.batch_size);
             for (state, values) in batch {
                 let x = state.image();
                 let y = Tensor::from_slice(&values);
@@ -126,19 +115,7 @@ pub fn train(config: TrainingConfig) {
     tournament.leaderboard();
 
     let path = get_save_path();
-    model
-        .save_with_metadata(
-            &path,
-            &Metadata {
-                model_config: ModelConfig {
-                    game: GAME::name(),
-                    layers,
-                    hidden_dim,
-                },
-                training_config: config,
-            },
-        )
-        .unwrap();
+    model.save_with_config(&path, &config).unwrap();
     println!("Saved as {}", &path.file_name().unwrap().to_string_lossy());
 }
 
