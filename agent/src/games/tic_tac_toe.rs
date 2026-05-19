@@ -131,7 +131,7 @@ impl GameState for TicTacToe {
 impl Image for TicTacToe {
     const IMAGE_SIZE: i64 = 19;
 
-    fn image(&self) -> tch::Tensor {
+    fn image(&self, _: Self::Player) -> tch::Tensor {
         let mut plane1: Vec<f32> = vec![];
         let mut plane2: Vec<f32> = vec![];
         let plane3: Vec<f32> = if self.current_player() == TicTacToePlayer::X {

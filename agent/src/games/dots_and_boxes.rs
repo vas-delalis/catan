@@ -329,9 +329,9 @@ impl Display for DotsAndBoxes {
 }
 
 impl Image for DotsAndBoxes {
-    const IMAGE_SIZE: i64 = N_EDGES as i64 + 8;
+    const IMAGE_SIZE: i64 = N_EDGES as i64 + 12;
 
-    fn image(&self) -> tch::Tensor {
+    fn image(&self, arbiter: Player) -> tch::Tensor {
         use tch::Tensor;
 
         let mut board_image = vec![0f32; N_EDGES];
@@ -350,7 +350,10 @@ impl Image for DotsAndBoxes {
         let mut to_play = vec![0f32; 4];
         to_play[self.current_player as usize] = 1.0;
 
-        Tensor::from_slice(&[board_image, score, to_play].concat())
+        let mut arbiter_vec = vec![0f32; 4];
+        arbiter_vec[arbiter as usize] = 1.0;
+
+        Tensor::from_slice(&[board_image, score, to_play, arbiter_vec].concat())
     }
 }
 

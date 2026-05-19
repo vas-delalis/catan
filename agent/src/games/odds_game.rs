@@ -115,7 +115,8 @@ impl GameState for OddsGame {
 
 impl Image for OddsGame {
     const IMAGE_SIZE: i64 = 3;
-    fn image(&self) -> tch::Tensor {
+
+    fn image(&self, _: OddsGamePlayer) -> tch::Tensor {
         Tensor::from_slice(&[
             self.w as f32,
             self.l as f32,

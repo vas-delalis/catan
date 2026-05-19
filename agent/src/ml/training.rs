@@ -64,19 +64,29 @@ pub fn train(config: TrainingConfig) {
         let mut train_loss = 0.0;
         let n_states = dataset_train.len();
         for batch in &dataset_train.into_iter().chunks(params.batch_size) {
-            let mut images = Vec::with_capacity(params.batch_size);
-            let mut targets = Vec::with_capacity(params.batch_size);
+            let mut images = Vec::with_capacity(params.batch_size * 4);
+            let mut targets = Vec::with_capacity(params.batch_size * 4);
             for (state, values) in batch {
-                let x = state.image();
-                let y = Tensor::from_slice(&values);
-                images.push(x);
-                targets.push(y);
+                for (&arbiter, &value) in <GAME as GameState>::Player::list()
+                    .iter()
+                    .zip(values.iter())
+                {
+                    let x = state.image(arbiter);
+                    let y = Tensor::from(value);
+                    // dbg!(&y);
+                    images.push(x);
+                    targets.push(y);
+                }
             }
             let images = Tensor::stack(&images, 1).transpose(0, 1);
-            let targets = Tensor::stack(&targets, 1).transpose(0, 1);
+            // dbg!(&targets);
+            let targets = Tensor::stack(&targets, 0).reshape([-1, 1]);
+            // dbg!(&images.size());
+            // dbg!(&targets.size());
+            // let targets = targets.transpose(0, 1);
             let output = model.infer(images);
+            // dbg!(&output);
             let loss = output.mse_loss(&targets, tch::Reduction::Sum);
-
             optimizer.backward_step(&loss);
             let loss: f32 = loss.try_into().unwrap();
             train_loss += loss;
@@ -92,11 +102,16 @@ pub fn train(config: TrainingConfig) {
         let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
         let mut test_losses = vec![];
         for (state, values) in dataset_test {
-            let x = state.image();
-            let y = Tensor::from_slice(&values);
-            let loss = model.infer(x).mse_loss(&y, tch::Reduction::Mean);
-            let loss: f32 = loss.try_into().unwrap();
-            test_losses.push(loss);
+            for (&arbiter, &value) in <GAME as GameState>::Player::list()
+                .iter()
+                .zip(values.iter())
+            {
+                let x = state.image(arbiter);
+                let y = Tensor::from(value);
+                let loss = model.infer(x).mse_loss(&y, tch::Reduction::Mean);
+                let loss: f32 = loss.try_into().unwrap();
+                test_losses.push(loss);
+            }
         }
 
         let n = test_losses.len();

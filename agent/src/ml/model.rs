@@ -1,12 +1,12 @@
 use std::{error::Error, path::Path as FSPath};
 
 use tch::{
-    IndexOp, Tensor,
+    Tensor,
     nn::{self, Path as VSPath, Sequential, VarStore},
 };
 
 use crate::{
-    GameState, Player,
+    GameState,
     agents::Evaluator,
     ml::{Image, TrainingConfig},
 };
@@ -44,7 +44,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
         seq = seq.add(nn::linear(
             root.clone() / "output",
             hidden,
-            <G as GameState>::Player::LEN as i64,
+            1,
             Default::default(),
         ));
         seq
@@ -115,8 +115,7 @@ impl Model {
 
 impl<G: GameState + Image> Evaluator<G> for Model {
     fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
-        let image = game_state.image();
-        let p: usize = arbiter.into();
-        self.infer(image).i(p as i64).try_into().unwrap()
+        let image = game_state.image(arbiter);
+        self.infer(image).try_into().unwrap()
     }
 }

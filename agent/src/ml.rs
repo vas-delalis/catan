@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 use tch::Tensor;
 pub use training::train;
 
-pub trait Image {
+use crate::GameState;
+
+pub trait Image: GameState {
     const IMAGE_SIZE: i64;
-    fn image(&self) -> Tensor;
+    fn image(&self, arbiter: Self::Player) -> Tensor;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
