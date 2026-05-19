@@ -1,4 +1,5 @@
 use rand::seq::SliceRandom;
+use tch::no_grad_guard;
 
 use crate::{Agent, GameState, Player};
 
@@ -22,6 +23,7 @@ impl<G: GameState> Dataset<G> {
     }
 
     pub fn selfplay(&mut self, agent: &dyn Agent<G>) {
+        let _guard = no_grad_guard();
         while self.len() < self.replay_count {
             let mut game = G::new();
             let mut buffer = vec![];
