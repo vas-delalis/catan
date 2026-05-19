@@ -73,19 +73,13 @@ pub fn train(config: TrainingConfig) {
                 {
                     let x = state.image(arbiter);
                     let y = Tensor::from(value);
-                    // dbg!(&y);
                     images.push(x);
                     targets.push(y);
                 }
             }
             let images = Tensor::stack(&images, 1).transpose(0, 1);
-            // dbg!(&targets);
             let targets = Tensor::stack(&targets, 0).reshape([-1, 1]);
-            // dbg!(&images.size());
-            // dbg!(&targets.size());
-            // let targets = targets.transpose(0, 1);
             let output = model.infer(images);
-            // dbg!(&output);
             let loss = output.mse_loss(&targets, tch::Reduction::Sum);
             optimizer.backward_step(&loss);
             let loss: f32 = loss.try_into().unwrap();
@@ -108,7 +102,7 @@ pub fn train(config: TrainingConfig) {
             {
                 let x = state.image(arbiter);
                 let y = Tensor::from(value);
-                let loss = model.infer(x).mse_loss(&y, tch::Reduction::Mean);
+                let loss = model.infer(x).mse_loss(&y, tch::Reduction::Sum);
                 let loss: f32 = loss.try_into().unwrap();
                 test_losses.push(loss);
             }
