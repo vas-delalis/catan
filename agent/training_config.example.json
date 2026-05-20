@@ -11,6 +11,7 @@
     "learning_rate": 0.001,
     "train_replays": 2000,
     "test_replays": 200,
-    "dirichlet_alpha": 0.005
+    "dirichlet_alpha": 0.005,
+    "self_play_sampling_rate": 0.15
   }
 }

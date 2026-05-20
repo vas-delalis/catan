@@ -30,10 +30,11 @@ pub struct ModelConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hyperparameters {
     pub epochs: usize,
-    pub learning_rate: f64,
+    pub search_evals: usize,
+    pub batch_size: usize,
     pub train_replays: usize,
     pub test_replays: usize,
-    pub batch_size: usize,
-    pub search_evals: usize,
+    pub learning_rate: f64,
     pub dirichlet_alpha: f64,
+    pub self_play_sampling_rate: f64
 }

@@ -52,18 +52,19 @@ pub fn train(config: TrainingConfig) {
     tournament.leaderboard();
 
     println!("Training {} parameters...", model.parameter_count());
+
+    let mut dataset_train = Dataset::new(params.train_replays);
+    let mut dataset_test = Dataset::new(params.test_replays);
     let start = Instant::now();
 
     for epoch in 1..=params.epochs {
-        let mut dataset_train = Dataset::new(params.train_replays);
-        let mut dataset_test = Dataset::new(params.test_replays);
-        dataset_train.selfplay(&agent);
-        dataset_test.selfplay(&agent);
+        dataset_train.self_play(&agent, params.self_play_sampling_rate, default_threads());
+        dataset_test.self_play(&agent, params.self_play_sampling_rate, default_threads());
 
         // Train
         let mut train_loss = 0.0;
         let n_states = dataset_train.len();
-        for batch in &dataset_train.into_iter().chunks(params.batch_size) {
+        for batch in &dataset_train.drain().chunks(params.batch_size) {
             let mut images = Vec::with_capacity(params.batch_size * 4);
             let mut targets = Vec::with_capacity(params.batch_size * 4);
             for (state, values) in batch {
@@ -95,7 +96,7 @@ pub fn train(config: TrainingConfig) {
         // Test
         let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
         let mut test_losses = vec![];
-        for (state, values) in dataset_test {
+        for (state, values) in dataset_test.drain() {
             for (&arbiter, &value) in <GAME as GameState>::Player::list()
                 .iter()
                 .zip(values.iter())
@@ -153,4 +154,10 @@ fn get_save_path() -> PathBuf {
     };
     path.push(format!("{}.safetensors", next));
     path
+}
+
+fn default_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
 }

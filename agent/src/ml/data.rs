@@ -22,16 +22,64 @@ impl<G: GameState> Dataset<G> {
         self.replay_buffer.len()
     }
 
-    pub fn selfplay(&mut self, agent: &dyn Agent<G>) {
+    pub fn drain(&mut self) -> std::vec::Drain<'_, (G, [f32; 4])> {
+        self.replay_buffer.drain(0..)
+    }
+
+    pub fn self_play<A>(&mut self, agent: &A, sampling_rate: f64, threads: usize)
+    where
+        A: Agent<G> + Clone + Send,
+        G: Send,
+        G::Action: Send,
+        G::Player: Send,
+    {
         let _guard = no_grad_guard();
-        while self.len() < self.replay_count {
+        let replays_per_thread = self.replay_count / threads;
+        let remainder = self.replay_count % threads;
+
+        let results = std::thread::scope(|s| {
+            let mut handles = vec![];
+            for i in 0..threads {
+                let agent_clone = agent.clone();
+                // Spread out the remainder
+                let count = replays_per_thread + if i < remainder { 1 } else { 0 };
+                if count == 0 {
+                    continue;
+                }
+
+                handles.push(s.spawn(move || Self::generate(agent_clone, count, sampling_rate)));
+            }
+
+            let mut thread_results = Vec::new();
+            for handle in handles {
+                thread_results.push(handle.join().unwrap());
+            }
+            thread_results
+        });
+
+        for res in results {
+            self.replay_buffer.extend(res);
+        }
+        self.replay_buffer.shuffle(&mut rand::rng());
+    }
+
+    fn generate<A: Agent<G> + Clone + Send>(
+        agent: A,
+        count: usize,
+        sampling_rate: f64,
+    ) -> Vec<Snapshot<G>> {
+        let _guard = no_grad_guard();
+        let mut thread_buffer = Vec::with_capacity(count);
+        while thread_buffer.len() < count {
             let mut game = G::new();
             let mut buffer = vec![];
             while !game.is_terminal() {
                 let action = agent.get_action(game.clone());
                 game.apply_action(action);
                 agent.inform(action);
-                if rand::random_ratio(1, 5) {
+                // Sampling gives better training data than adding every state.
+                // This may be because it allows the model to see a greater variety of situations.
+                if rand::random_bool(sampling_rate) {
                     buffer.push(game.clone());
                 }
             }
@@ -39,11 +87,11 @@ impl<G: GameState> Dataset<G> {
 
             for state in buffer {
                 let players = G::Player::list();
-                let values: [f32; 4] = std::array::from_fn(|i| game.outcome(players[i]).unwrap().1);
-                self.replay_buffer.push((state, values));
+                let values: [f32; 4] = std::array::from_fn(|j| game.outcome(players[j]).unwrap().1);
+                thread_buffer.push((state, values));
             }
         }
-        self.replay_buffer.shuffle(&mut rand::rng());
+        thread_buffer
     }
 }
 

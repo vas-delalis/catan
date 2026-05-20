@@ -113,6 +113,13 @@ impl Model {
     }
 }
 
+// We force Model to be Sync in order to use multiple Search agents concurrently.
+// Ideally, tch would offer a way to get an immutable reference for evaluation
+// (with no gradients) or a mutable reference for training (with gradients enabled).
+// Less ideally, we'd find a way to safely implement this ourselves.
+// For now, `unsafe` works.
+unsafe impl Sync for Model {}
+
 impl<G: GameState + Image> Evaluator<G> for Model {
     fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
         let image = game_state.image(arbiter);
