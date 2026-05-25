@@ -5,7 +5,6 @@ use crate::ml::TrainingConfig;
 use crate::{
     GameState, Player, Tournament,
     agents::{ConstantEvaluator, Search},
-    games::DotsAndBoxes,
     ml::{Image, Model, data::Dataset, vanilla},
 };
 use itertools::Itertools;
@@ -14,14 +13,12 @@ use tch::{
     nn::{self, OptimizerConfig},
 };
 
-type GAME = DotsAndBoxes;
-
-pub fn train(config: TrainingConfig) {
+pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
     let model_config = config.model_config.clone();
     let params = config.hyperparameters.clone();
 
-    let arch = vanilla::<GAME>(model_config.layers, model_config.hidden_dim);
-    let model = Model::new::<GAME>(arch);
+    let arch = vanilla::<G>(model_config.layers, model_config.hidden_dim);
+    let model = Model::new::<G>(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), params.learning_rate)
         .unwrap();
@@ -43,7 +40,7 @@ pub fn train(config: TrainingConfig) {
         params.dirichlet_alpha,
     );
 
-    let mut tournament: Tournament<GAME> = Tournament::new(0.05, 0.05);
+    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), false);
@@ -68,10 +65,7 @@ pub fn train(config: TrainingConfig) {
             let mut images = Vec::with_capacity(params.batch_size * 4);
             let mut targets = Vec::with_capacity(params.batch_size * 4);
             for (state, values) in batch {
-                for (&arbiter, &value) in <GAME as GameState>::Player::list()
-                    .iter()
-                    .zip(values.iter())
-                {
+                for (&arbiter, &value) in G::Player::list().iter().zip(values.iter()) {
                     let x = state.image(arbiter);
                     let y = Tensor::from(value);
                     images.push(x);
@@ -90,17 +84,14 @@ pub fn train(config: TrainingConfig) {
         print!(
             "[Epoch {}] Train: {:.3} / ",
             epoch,
-            train_loss / n_states as f32 / <GAME as GameState>::Player::LEN as f32
+            train_loss / n_states as f32 / G::Player::LEN as f32
         );
 
         // Test
         let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
         let mut test_losses = vec![];
         for (state, values) in dataset_test.drain() {
-            for (&arbiter, &value) in <GAME as GameState>::Player::list()
-                .iter()
-                .zip(values.iter())
-            {
+            for (&arbiter, &value) in G::Player::list().iter().zip(values.iter()) {
                 let x = state.image(arbiter);
                 let y = Tensor::from(value);
                 let loss = model.infer(x).mse_loss(&y, tch::Reduction::Sum);
@@ -116,7 +107,7 @@ pub fn train(config: TrainingConfig) {
 
     println!("Training complete. Elapsed: {}s", start.elapsed().as_secs());
 
-    let mut tournament: Tournament<GAME> = Tournament::new(0.05, 0.05);
+    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), false);
@@ -124,14 +115,14 @@ pub fn train(config: TrainingConfig) {
     tournament.play();
     tournament.leaderboard();
 
-    let path = get_save_path();
+    let path = get_save_path(&G::name());
     model.save_with_config(&path, &config).unwrap();
     println!("Saved as {}", &path.file_name().unwrap().to_string_lossy());
 }
 
-fn get_save_path() -> PathBuf {
+fn get_save_path(game_name: &str) -> PathBuf {
     let mut path = PathBuf::from("./models");
-    path.push(GAME::name());
+    path.push(game_name);
     fs::create_dir_all(&path).unwrap();
 
     // Get highest id in directory
