@@ -3,7 +3,7 @@ use tch::no_grad_guard;
 
 use crate::{Agent, GameState, Player};
 
-type Snapshot<G> = (G, [f32; 4]);
+type Snapshot<G> = (G, Vec<f32>);
 
 pub struct Dataset<G: GameState> {
     replay_buffer: Vec<Snapshot<G>>,
@@ -22,7 +22,7 @@ impl<G: GameState> Dataset<G> {
         self.replay_buffer.len()
     }
 
-    pub fn drain(&mut self) -> std::vec::Drain<'_, (G, [f32; 4])> {
+    pub fn drain(&mut self) -> std::vec::Drain<'_, (G, Vec<f32>)> {
         self.replay_buffer.drain(0..)
     }
 
@@ -87,7 +87,10 @@ impl<G: GameState> Dataset<G> {
 
             for state in buffer {
                 let players = G::Player::list();
-                let values: [f32; 4] = std::array::from_fn(|j| game.outcome(players[j]).unwrap().1);
+                let values: Vec<f32> = players
+                    .iter()
+                    .map(|&p| game.outcome(p).unwrap().1)
+                    .collect();
                 thread_buffer.push((state, values));
             }
         }
