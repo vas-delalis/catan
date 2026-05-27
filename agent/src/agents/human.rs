@@ -9,7 +9,7 @@ pub struct Human {}
 
 impl<G: GameState + Display> Agent<G> for Human {
     fn get_action(&self, game_state: G) -> G::Action {
-        let actions = game_state.get_actions(game_state.current_player());
+        let (actions, _) = game_state.get_actions(game_state.current_player());
 
         println!("{}", game_state);
         println!("{:?}", game_state.current_player());

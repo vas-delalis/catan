@@ -81,12 +81,17 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         if let Some((_, value)) = game.outcome(arbiter) {
             return value as f64;
         }
-        let actions = game.get_actions(to_play);
+        let (actions, probs) = game.get_actions(to_play);
 
         // Run inference
         let value = self.evaluator.evaluate(game, arbiter);
-        let (_, policy_logits) = (value, vec![0f64; actions.len()]);
-        let policy: Vec<f64> = policy_logits.into_iter().map(|l| l.exp()).collect();
+        // Convert priors into odds
+        let policy: Vec<f64> = if let Some(probs) = probs {
+            probs.into_iter().map(|p| p / (1.0 - p)).collect()
+        } else {
+            let logits = vec![0f64; actions.len()];
+            logits.into_iter().map(|l| l.exp()).collect()
+        };
         let sum: f64 = policy.iter().sum();
 
         // Expand node (initialize children)

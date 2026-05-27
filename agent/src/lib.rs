@@ -34,7 +34,8 @@ pub trait GameState: Clone + Send {
 
     fn name() -> String;
     fn new() -> Self;
-    fn get_actions(&self, player: Self::Player) -> Vec<Self::Action>;
+    fn is_random(&self) -> bool;
+    fn get_actions(&self, player: Self::Player) -> (Vec<Self::Action>, Option<Vec<f64>>);
     fn apply_action(&mut self, action: Self::Action);
     fn current_player(&self) -> Self::Player;
     fn is_terminal(&self) -> bool;

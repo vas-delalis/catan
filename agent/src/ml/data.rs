@@ -1,7 +1,7 @@
 use rand::seq::SliceRandom;
 use tch::no_grad_guard;
 
-use crate::{Agent, GameState, Player};
+use crate::{Agent, GameState, Player, agents::Random};
 
 type Snapshot<G> = (G, Vec<f32>);
 
@@ -70,11 +70,16 @@ impl<G: GameState> Dataset<G> {
     ) -> Vec<Snapshot<G>> {
         let _guard = no_grad_guard();
         let mut thread_buffer = Vec::with_capacity(count);
+        let luck = Random {};
         while thread_buffer.len() < count {
             let mut game = G::new();
             let mut buffer = vec![];
             while !game.is_terminal() {
-                let action = agent.get_action(game.clone());
+                let action = if game.is_random() {
+                    luck.get_action(game.clone())
+                } else {
+                    agent.get_action(game.clone())
+                };
                 game.apply_action(action);
                 agent.inform(action);
                 // Sampling gives better training data than adding every state.

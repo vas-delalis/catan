@@ -5,10 +5,10 @@ use rand::{rng, seq::IndexedRandom};
 pub struct Random {}
 
 impl<G: GameState> Agent<G> for Random {
-    fn get_action(&self, game_state: G) -> G::Action {
-        *game_state
-            .get_actions(game_state.current_player())
-            .choose(&mut rng())
-            .unwrap()
+    fn get_action(&self, state: G) -> G::Action {
+        let (actions, probs) = state.get_actions(state.current_player());
+        let probs = probs.unwrap_or(vec![1.0; actions.len()]);
+        let zipped: Vec<(G::Action, f64)> = actions.into_iter().zip(probs).collect();
+        zipped.choose_weighted(&mut rng(), |item| item.1).unwrap().0
     }
 }

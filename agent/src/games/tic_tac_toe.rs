@@ -82,12 +82,15 @@ impl GameState for TicTacToe {
         }
     }
 
-    fn get_actions(&self, _player: TicTacToePlayer) -> Vec<Cell> {
-        self.board
-            .iter()
-            .enumerate()
-            .filter_map(|(i, cell)| cell.is_none().then_some(Cell(i as u8)))
-            .collect()
+    fn get_actions(&self, _player: TicTacToePlayer) -> (Vec<Cell>, Option<Vec<f64>>) {
+        (
+            self.board
+                .iter()
+                .enumerate()
+                .filter_map(|(i, cell)| cell.is_none().then_some(Cell(i as u8)))
+                .collect(),
+            None,
+        )
     }
 
     fn current_player(&self) -> TicTacToePlayer {
@@ -124,7 +127,11 @@ impl GameState for TicTacToe {
     }
 
     fn is_terminal(&self) -> bool {
-        self.check_winner().is_some() || self.get_actions(self.current_player).is_empty()
+        self.check_winner().is_some() || self.get_actions(self.current_player).0.is_empty()
+    }
+
+    fn is_random(&self) -> bool {
+        false
     }
 }
 
