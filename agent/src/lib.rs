@@ -13,10 +13,10 @@ pub trait Agent<G: GameState> {
     fn reset(&self) {}
 }
 
-pub trait Action: Copy + Debug + Into<usize> + From<usize> {}
-impl<T: Copy + Debug + Into<usize> + From<usize>> Action for T {}
+pub trait Action: Copy + Debug + Into<usize> + From<usize> + Send {}
+impl<T: Copy + Debug + Into<usize> + From<usize> + Send> Action for T {}
 
-pub trait Player: Copy + PartialEq + Debug + Into<usize> {
+pub trait Player: Copy + PartialEq + Debug + Into<usize> + Send {
     const LEN: usize;
     fn list() -> Vec<Self>;
 }
@@ -28,7 +28,7 @@ pub enum Outcome {
     Loss,
 }
 
-pub trait GameState: Clone {
+pub trait GameState: Clone + Send {
     type Action: Action;
     type Player: Player;
 
