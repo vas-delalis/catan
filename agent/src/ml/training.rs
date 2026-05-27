@@ -40,7 +40,7 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
         params.dirichlet_alpha,
     );
 
-    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05);
+    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05).max_moves(1000);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), false);
@@ -107,7 +107,7 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
 
     println!("Training complete. Elapsed: {}s", start.elapsed().as_secs());
 
-    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05);
+    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05).max_moves(1000);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), false);

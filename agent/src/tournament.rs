@@ -16,6 +16,7 @@ pub struct Tournament<'a, G> {
     matchups: HashMap<(usize, usize), Matchup>,
     false_positive_rate: f64,
     false_negative_rate: f64,
+    max_moves: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -110,7 +111,13 @@ impl<'a, G: GameState> Tournament<'a, G> {
             roster: vec![],
             false_positive_rate,
             false_negative_rate,
+            max_moves: None,
         }
+    }
+
+    pub fn max_moves(mut self, n: usize) -> Self {
+        self.max_moves = Some(n);
+        self
     }
 
     pub fn add(&mut self, agent: Box<dyn Agent<G> + 'a>, evaluate: bool) {
@@ -194,7 +201,13 @@ impl<'a, G: GameState> Tournament<'a, G> {
 
             // Play game
             let mut game = G::new();
+            let mut moves = 0;
+            let mut cancelled = false;
             while !game.is_terminal() {
+                if self.max_moves.is_some_and(|max| moves >= max) {
+                    cancelled = true;
+                    break;
+                }
                 let scratch = game.clone();
                 let idx = players
                     .iter()
@@ -207,9 +220,13 @@ impl<'a, G: GameState> Tournament<'a, G> {
                 for a in agents.iter() {
                     self.roster[*a].agent.inform(action);
                 }
+                moves += 1;
             }
             for a in agents.iter() {
                 self.roster[*a].agent.reset();
+            }
+            if cancelled {
+                continue;
             }
             games_played += 1;
 
