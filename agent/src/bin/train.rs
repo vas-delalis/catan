@@ -1,4 +1,4 @@
-use agent::games::{DotsAndBoxes, OddsGame, TicTacToe};
+use agent::games::{DotsAndBoxes, OddsGame, Pig, TicTacToe};
 use agent::ml::{TrainingConfig, train};
 use std::fs;
 
@@ -10,6 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "DotsAndBoxes" => train::<DotsAndBoxes>(config),
         "OddsGame" => train::<OddsGame>(config),
         "TicTacToe" => train::<TicTacToe>(config),
+        "Pig" => train::<Pig>(config),
         other => return Err(format!("Unknown game: {}", other).into()),
     }
 
