@@ -39,6 +39,42 @@ impl Node {
         }
         self.total_value / (self.visits as f64)
     }
+
+    fn display<G: GameState>(&self, depth: usize, max_depth: usize, action: Option<String>) {
+        if depth > max_depth {
+            return;
+        }
+
+        let indent = "  ".repeat(depth);
+        if let Some(action_str) = action {
+            println!(
+                "{}{} {} | P: {:.2} | V: {:.2}",
+                indent,
+                action_str,
+                self.visits,
+                self.prior,
+                self.value()
+            );
+        } else {
+            println!(
+                "{}Root {} | P: {:.2} | V: {:.2}",
+                indent,
+                self.visits,
+                self.prior,
+                self.value()
+            );
+        }
+
+        for (&action_id, child) in &self.children {
+            let action_obj = G::Action::from(action_id);
+            Self::display::<G>(
+                child,
+                depth + 1,
+                max_depth,
+                Some(format!("{:?}", action_obj)),
+            );
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -184,6 +220,12 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         for (_, child) in node.children.iter_mut() {
             child.prior *= 1.0 - fraction;
             child.prior += gamma.sample(&mut rng) * fraction;
+        }
+    }
+
+    pub fn display_tree(&self, max_depth: usize) {
+        if let Some((_, ref root)) = *self.tree.borrow() {
+            root.display::<G>(0, max_depth, None);
         }
     }
 }
