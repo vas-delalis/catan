@@ -44,11 +44,11 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
     let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05)
         .max_moves(1000)
         .max_time(Duration::from_secs(10));
-    tournament.add(Box::new(agent.clone()), true);
-    tournament.add(Box::new(reference_agent.clone()), true);
+    tournament.add(Box::new(agent.clone()), "agent", true);
+    tournament.add(Box::new(reference_agent.clone()), "reference", true);
     for _ in 2..G::Player::LEN {
         // Fill remaining slots
-        tournament.add(Box::new(reference_agent.clone()), false);
+        tournament.add(Box::new(reference_agent.clone()), "reference", false);
     }
     tournament.play();
     tournament.leaderboard();
@@ -117,11 +117,11 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
     let mut tournament = Tournament::new(0.05, 0.05)
         .max_moves(1000)
         .max_time(Duration::from_secs(10));
-    tournament.add(Box::new(agent.clone()), true);
-    tournament.add(Box::new(reference_agent.clone()), true);
+    tournament.add(Box::new(agent.clone()), "agent", true);
+    tournament.add(Box::new(reference_agent.clone()), "reference", true);
     for _ in 2..G::Player::LEN {
         // Fill remaining slots
-        tournament.add(Box::new(reference_agent.clone()), false);
+        tournament.add(Box::new(reference_agent.clone()), "reference", false);
     }
     tournament.play();
     tournament.leaderboard();

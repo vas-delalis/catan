@@ -17,10 +17,11 @@ fn main() {
         //     println!("{}", t);
         // }
 
-        let mut tournament: Tournament<G> = Tournament::new(0.15, 0.15);
-        for model in &models {
+        let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05);
+        for (id, model) in model_ids.iter().zip(&models) {
             tournament.add(
                 Box::new(Search::new(model, 100, true, 1.41, 1.0, 0.01)),
+                &format!("model {}", id),
                 true,
             );
         }
@@ -36,7 +37,7 @@ fn main() {
         //     )),
         //     true,
         // );
-        tournament.add(Box::new(Random {}), true);
+        tournament.add(Box::new(Random {}), "random", true);
 
         tournament.play();
         tournament.leaderboard();

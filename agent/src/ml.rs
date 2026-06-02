@@ -36,5 +36,5 @@ pub struct Hyperparameters {
     pub test_replays: usize,
     pub learning_rate: f64,
     pub dirichlet_alpha: f64,
-    pub self_play_sampling_rate: f64
+    pub self_play_sampling_rate: f64,
 }

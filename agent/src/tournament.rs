@@ -69,8 +69,8 @@ impl Matchup {
 }
 
 struct Participant<'a, G> {
-    id: usize,
     agent: Box<dyn Agent<G> + 'a>,
+    name: String,
     rating: f64,
     wins: usize,
     draws: usize,
@@ -78,8 +78,15 @@ struct Participant<'a, G> {
     evaluate: bool,
 }
 
-fn expected_score(x: f64) -> f64 {
-    1.0 / (1.0 + 10.0f64.powf(-x / 400.0))
+impl<'a, G> Participant<'a, G> {
+    fn winrate(&self) -> f64 {
+        (self.wins as f64 + self.draws as f64 / 2.0) / (self.wins + self.draws + self.losses) as f64
+    }
+}
+
+/// Returns the expected score ∈ \[0, 1] for a given Elo difference.
+fn expected_score(diff: f64) -> f64 {
+    1.0 / (1.0 + 10.0f64.powf(-diff / 400.0))
 }
 
 fn log_likelihood_ratio(wins: usize, draws: usize, losses: usize) -> f64 {
@@ -127,10 +134,10 @@ impl<'a, G: GameState> Tournament<'a, G> {
         self
     }
 
-    pub fn add(&mut self, agent: Box<dyn Agent<G> + 'a>, evaluate: bool) {
+    pub fn add(&mut self, agent: Box<dyn Agent<G> + 'a>, name: &str, evaluate: bool) {
         self.roster.push(Participant {
-            id: self.roster.len(),
             agent: agent,
+            name: name.to_string(),
             rating: 1000.0,
             wins: 0,
             draws: 0,
@@ -167,7 +174,6 @@ impl<'a, G: GameState> Tournament<'a, G> {
 
         let player_count = G::Player::LEN;
         assert!(self.roster.len() >= player_count);
-        println!("Running tournament with {} agents", self.roster.len());
         let start = Instant::now();
 
         self.init_matchups();
@@ -175,6 +181,11 @@ impl<'a, G: GameState> Tournament<'a, G> {
         let mut results = 0;
         let mut games_played = 0;
         let to_test = self.matchups.iter().filter(|(_, m)| m.evaluate).count();
+        println!(
+            "Running tournament with {} agents ({} match-ups)...",
+            self.roster.len(),
+            to_test
+        );
 
         while results < to_test {
             if INTERRUPTED.load(Ordering::SeqCst) {
@@ -262,13 +273,14 @@ impl<'a, G: GameState> Tournament<'a, G> {
                         self.roster[id1].draws += 1;
                     }
                 }
+                let mut delta = 0.0;
                 for j in 0..player_count {
                     if i == j {
                         continue;
                     }
                     let id2 = agents[j];
 
-                    let (outcome, _) = state.pairwise_outcome(players[i], players[j]).unwrap();
+                    let (outcome, score) = state.pairwise_outcome(players[i], players[j]).unwrap();
                     let matchup = self.matchups.get_mut(&(id1, id2)).unwrap();
                     matchup.update(outcome);
 
@@ -278,45 +290,27 @@ impl<'a, G: GameState> Tournament<'a, G> {
                             .termination_test(self.false_positive_rate, self.false_negative_rate)
                     {
                         results += 1;
-                        match result {
-                            TestResult::H0 => {
-                                println!("Agent {} is no better than agent {}", id1, id2);
-                            }
-                            TestResult::H1 => {
-                                println!("Agent {} is better than agent {}", id1, id2);
-                            }
-                        }
+                        let symbol = match result {
+                            TestResult::H0 => "🟰 ",
+                            TestResult::H1 => "✅",
+                        };
+                        println!(
+                            "{:<12} {} {:>12}",
+                            self.roster[id1].name, symbol, self.roster[id2].name
+                        );
                     }
+                    let expected_score =
+                        expected_score(self.roster[id1].rating - self.roster[id2].rating) as f32;
+                    delta += 16.0 * ((score + 1.0) / 2.0 - expected_score);
+                    // dbg!(
+                    //     self.roster[id1].rating,
+                    //     self.roster[id2].rating,
+                    //     expected_score,
+                    //     delta
+                    // );
                 }
+                self.roster[id1].rating += delta as f64;
             }
-
-            // let expected_score = expected_score(self.roster[i].rating - self.roster[j].rating);
-
-            // let delta = 16.0 * ((score + 1.0) / 2.0 - expected_score);
-            // self.roster[i].rating += delta;
-            // self.roster[j].rating -= delta;
-
-            // if self.roster.len() > 0 {
-            //     let scoreline = &self.scorelines[i][j];
-            //     if let Some(result) =
-            //         self.termination_test(scoreline.wins, max(scoreline.draws, 1), scoreline.losses)
-            //     {
-            //         self.test_results[i][j] = Some(result);
-            //         matchups.remove(&(i, j));
-            //         match result {
-            //             TestResult::H0 => {
-            //                 println!("Agent {} is no better than agent {}", i, j);
-            //             }
-            //             TestResult::H1 => {
-            //                 println!("Agent {} is better than agent {}", i, j);
-            //                 println!(
-            //                     "{} {} {}",
-            //                     scoreline.wins, scoreline.draws, scoreline.losses,
-            //                 );
-            //             }
-            //         }
-            //     }
-            // }
         }
 
         println!("Played {} games", games_played);
@@ -325,6 +319,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
 
     pub fn leaderboard(&self) {
         for i in 0..self.roster.len() {
+            println!("{} ", self.roster[i].name);
             for j in 0..self.roster.len() {
                 if i == j {
                     continue;
@@ -334,15 +329,21 @@ impl<'a, G: GameState> Tournament<'a, G> {
                     / (line.wins + line.draws + line.losses) as f64
                     * 100.0;
                 println!(
-                    "{}-{}  {:.0}%  {}/{}/{}",
-                    i, j, wr, line.wins, line.draws, line.losses
+                    "    {:<12} {:>.0}%  {}/{}/{}",
+                    self.roster[j].name, wr, line.wins, line.draws, line.losses
                 )
             }
         }
+        println!();
         for agent in &self.roster {
             println!(
-                "{} {:.0} {}/{}/{}",
-                agent.id, agent.rating, agent.wins, agent.draws, agent.losses
+                "{:<12} WR: {:>3.0}% | Rating: {:>4.0} | {}/{}/{}",
+                agent.name,
+                agent.winrate() * 100.0,
+                agent.rating,
+                agent.wins,
+                agent.draws,
+                agent.losses
             )
         }
     }
