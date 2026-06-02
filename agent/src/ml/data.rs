@@ -1,7 +1,8 @@
+use common::{GameState, Player};
 use rand::seq::SliceRandom;
 use tch::no_grad_guard;
 
-use crate::{Agent, GameState, Player, agents::Random};
+use crate::{Agent, agents::Random};
 
 type Snapshot<G> = (G, Vec<f32>);
 

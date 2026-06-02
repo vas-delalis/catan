@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use agent::{GameState, Tournament, agents::*, ml::Model, with_game};
+use agent::{Tournament, agents::*, ml::Model, with_game};
+use common::GameState;
 
 fn main() {
     let _no_grad = tch::no_grad_guard();

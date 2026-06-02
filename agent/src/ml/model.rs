@@ -5,11 +5,8 @@ use tch::{
     nn::{self, Path as VSPath, Sequential, VarStore},
 };
 
-use crate::{
-    GameState,
-    agents::Evaluator,
-    ml::{Image, TrainingConfig},
-};
+use crate::{GameState, agents::Evaluator, ml::TrainingConfig};
+use common::Image;
 
 pub struct Model {
     layers: Sequential,

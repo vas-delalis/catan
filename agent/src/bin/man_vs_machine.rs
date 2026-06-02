@@ -2,10 +2,11 @@ use std::env;
 use std::path::PathBuf;
 
 use agent::{
-    Agent, GameState, Player,
+    Agent,
     agents::{Evaluator, Human, Random, Search},
     ml::Model,
 };
+use common::{GameState, Player};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);

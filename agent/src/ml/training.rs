@@ -4,10 +4,11 @@ use std::{fs, time::Instant};
 
 use crate::ml::TrainingConfig;
 use crate::{
-    GameState, Player, Tournament,
+    Tournament,
     agents::{ConstantEvaluator, Search},
-    ml::{Image, Model, data::Dataset, vanilla},
+    ml::{Model, data::Dataset, vanilla},
 };
+use common::{GameState, Image, Player};
 use itertools::Itertools;
 use tch::{
     Tensor,

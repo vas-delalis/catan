@@ -1,7 +1,8 @@
 use std::fmt::Display;
 use tch::Tensor;
 
-use crate::{GameState, Outcome, Player as PlayerTrait, ml::Image};
+use crate::GameState;
+use common::{Image, Outcome, Player as PlayerTrait};
 
 const WIN_SCORE: u32 = 50;
 

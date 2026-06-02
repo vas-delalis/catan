@@ -1,8 +1,9 @@
 use agent::{
-    Agent, GameState,
+    Agent,
     agents::{ConstantEvaluator, Random, Search},
     games::DotsAndBoxes,
 };
+use common::GameState;
 
 fn main() {
     let agent = Search::new(ConstantEvaluator::new(0.0), 1000, true, 1.41, 1.0, 0.01);

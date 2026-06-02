@@ -1,8 +1,9 @@
 use std::fmt;
 
+use common::{Image, Outcome, Player};
 use tch::Tensor;
 
-use crate::{GameState, Outcome, Player, ml::Image};
+use crate::GameState;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TicTacToePlayer {

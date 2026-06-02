@@ -1,9 +1,10 @@
 #[allow(unused)]
 use agent::{
-    Agent, GameState,
+    Agent,
     agents::{ConstantEvaluator, Random, Search},
     games::DotsAndBoxes,
 };
+use common::GameState;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 fn dots_and_boxes(c: &mut Criterion) {

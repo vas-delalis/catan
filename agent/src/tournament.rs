@@ -9,7 +9,8 @@ static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 use ctrlc;
 use rand::{rng, seq::SliceRandom};
 
-use crate::{Agent, GameState, Outcome, Player, agents::Random};
+use crate::{Agent, agents::Random};
+use common::{GameState, Outcome, Player};
 
 pub struct Tournament<'a, G> {
     roster: Vec<Participant<'a, G>>,

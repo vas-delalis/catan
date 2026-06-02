@@ -1,6 +1,7 @@
 use std::{fmt::Display, sync::LazyLock};
 
-use crate::{GameState, Outcome, Player as PlayerTrait, agents::Evaluator, ml::Image};
+use crate::{GameState, agents::Evaluator};
+use common::{Image, Outcome, Player as PlayerTrait};
 
 #[derive(Clone)]
 pub struct DotsAndBoxes {

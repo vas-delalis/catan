@@ -1,3 +1,4 @@
+use common::{Image, Outcome, Player};
 use rand::random_range;
 use std::{
     cmp::{max, min},
@@ -5,7 +6,7 @@ use std::{
 };
 use tch::Tensor;
 
-use crate::{GameState, Outcome, Player, agents::Evaluator, ml::Image};
+use crate::{GameState, agents::Evaluator};
 
 const DENOMINATOR: u32 = 100;
 
