@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::atomic::{AtomicBool, Ordering},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
@@ -17,6 +17,7 @@ pub struct Tournament<'a, G> {
     false_positive_rate: f64,
     false_negative_rate: f64,
     max_moves: Option<usize>,
+    max_time: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -112,11 +113,17 @@ impl<'a, G: GameState> Tournament<'a, G> {
             false_positive_rate,
             false_negative_rate,
             max_moves: None,
+            max_time: None,
         }
     }
 
     pub fn max_moves(mut self, n: usize) -> Self {
         self.max_moves = Some(n);
+        self
+    }
+
+    pub fn max_time(mut self, d: Duration) -> Self {
+        self.max_time = Some(d);
         self
     }
 
@@ -173,6 +180,10 @@ impl<'a, G: GameState> Tournament<'a, G> {
             if INTERRUPTED.load(Ordering::SeqCst) {
                 println!("\r\x1b[KStopping tournament...");
                 //        ^ Clear "^C"
+                break;
+            }
+            if self.max_time.is_some_and(|max| start.elapsed() >= max) {
+                println!("Time's up. Stopping tournament...");
                 break;
             }
 

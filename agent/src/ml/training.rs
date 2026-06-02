@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{fs, time::Instant};
 
 use crate::ml::TrainingConfig;
@@ -40,7 +41,9 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
         params.dirichlet_alpha,
     );
 
-    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05).max_moves(1000);
+    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05)
+        .max_moves(1000)
+        .max_time(Duration::from_secs(10));
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     for _ in 2..G::Player::LEN {
@@ -111,7 +114,9 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
 
     println!("Training complete. Elapsed: {}s", start.elapsed().as_secs());
 
-    let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05).max_moves(1000);
+    let mut tournament = Tournament::new(0.05, 0.05)
+        .max_moves(1000)
+        .max_time(Duration::from_secs(10));
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
     for _ in 2..G::Player::LEN {
