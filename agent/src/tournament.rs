@@ -9,7 +9,7 @@ static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 use ctrlc;
 use rand::{rng, seq::SliceRandom};
 
-use crate::{Agent, GameState, Outcome, Player};
+use crate::{Agent, GameState, Outcome, Player, agents::Random};
 
 pub struct Tournament<'a, G> {
     roster: Vec<Participant<'a, G>>,
@@ -82,12 +82,12 @@ fn expected_score(x: f64) -> f64 {
 }
 
 fn log_likelihood_ratio(wins: usize, draws: usize, losses: usize) -> f64 {
-    if wins == 0 || draws == 0 || losses == 0 {
+    let n = (wins + draws + losses) as f64;
+    if (wins == 0 || draws == 0 || losses == 0) && n < 100.0 {
         return 0.0;
     }
     let elo0 = 0.0;
     let elo1 = 5.0;
-    let n = (wins + draws + losses) as f64;
     let (w, d) = (wins as f64 / n, draws as f64 / n);
     let s = w + d / 2.0;
     let m2 = w + d / 4.0;
@@ -164,6 +164,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
         let start = Instant::now();
 
         self.init_matchups();
+        let luck = Random {};
         let mut results = 0;
         let mut games_played = 0;
         let to_test = self.matchups.iter().filter(|(_, m)| m.evaluate).count();
@@ -200,23 +201,28 @@ impl<'a, G: GameState> Tournament<'a, G> {
             players.shuffle(&mut rng());
 
             // Play game
-            let mut game = G::new();
+            let mut state = G::new();
             let mut moves = 0;
             let mut cancelled = false;
-            while !game.is_terminal() {
+            while !state.is_terminal() {
                 if self.max_moves.is_some_and(|max| moves >= max) {
                     cancelled = true;
                     break;
                 }
-                let scratch = game.clone();
+
                 let idx = players
                     .iter()
-                    .position(|&i| i == game.current_player())
+                    .position(|&i| i == state.current_player())
                     .unwrap();
 
                 let agent = &self.roster[agents[idx]].agent;
-                let action = agent.get_action(scratch);
-                game.apply_action(action);
+                let action = if state.is_random() {
+                    luck.get_action(state.clone())
+                } else {
+                    agent.get_action(state.clone())
+                };
+
+                state.apply_action(action);
                 for a in agents.iter() {
                     self.roster[*a].agent.inform(action);
                 }
@@ -233,7 +239,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
             // Tally results and run tests
             for i in 0..player_count {
                 let id1 = agents[i];
-                let (outcome, _) = game.outcome(players[i]).unwrap();
+                let (outcome, _) = state.outcome(players[i]).unwrap();
                 match outcome {
                     Outcome::Win => {
                         self.roster[id1].wins += 1;
@@ -251,7 +257,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
                     }
                     let id2 = agents[j];
 
-                    let (outcome, _) = game.pairwise_outcome(players[i], players[j]).unwrap();
+                    let (outcome, _) = state.pairwise_outcome(players[i], players[j]).unwrap();
                     let matchup = self.matchups.get_mut(&(id1, id2)).unwrap();
                     matchup.update(outcome);
 
