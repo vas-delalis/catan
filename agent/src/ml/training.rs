@@ -43,8 +43,10 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
     let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05).max_moves(1000);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
-    tournament.add(Box::new(reference_agent.clone()), false);
-    tournament.add(Box::new(reference_agent.clone()), false);
+    for _ in 2..G::Player::LEN {
+        // Fill remaining slots
+        tournament.add(Box::new(reference_agent.clone()), false);
+    }
     tournament.play();
     tournament.leaderboard();
 
@@ -62,8 +64,8 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
         let mut train_loss = 0.0;
         let n_states = dataset_train.len();
         for batch in &dataset_train.drain().chunks(params.batch_size) {
-            let mut images = Vec::with_capacity(params.batch_size * 4);
-            let mut targets = Vec::with_capacity(params.batch_size * 4);
+            let mut images = Vec::with_capacity(params.batch_size * G::Player::LEN);
+            let mut targets = Vec::with_capacity(params.batch_size * G::Player::LEN);
             for (state, values) in batch {
                 for (&arbiter, &value) in G::Player::list().iter().zip(values.iter()) {
                     let x = state.image(arbiter);
@@ -74,7 +76,9 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
             }
             let images = Tensor::stack(&images, 1).transpose(0, 1);
             let targets = Tensor::stack(&targets, 0).reshape([-1, 1]);
+
             let output = model.infer(images);
+
             let loss = output.mse_loss(&targets, tch::Reduction::Sum);
             optimizer.backward_step(&loss);
             let loss: f32 = loss.try_into().unwrap();
@@ -110,8 +114,10 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
     let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05).max_moves(1000);
     tournament.add(Box::new(agent.clone()), true);
     tournament.add(Box::new(reference_agent.clone()), true);
-    tournament.add(Box::new(reference_agent.clone()), false);
-    tournament.add(Box::new(reference_agent.clone()), false);
+    for _ in 2..G::Player::LEN {
+        // Fill remaining slots
+        tournament.add(Box::new(reference_agent.clone()), false);
+    }
     tournament.play();
     tournament.leaderboard();
 

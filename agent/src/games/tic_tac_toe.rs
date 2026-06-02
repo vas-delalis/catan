@@ -1,3 +1,5 @@
+use std::fmt;
+
 use tch::Tensor;
 
 use crate::{GameState, Outcome, Player, ml::Image};
@@ -132,6 +134,23 @@ impl GameState for TicTacToe {
 
     fn is_random(&self) -> bool {
         false
+    }
+}
+
+impl fmt::Display for TicTacToe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, cell) in self.board.iter().enumerate() {
+            let c = match cell {
+                Some(TicTacToePlayer::X) => 'X',
+                Some(TicTacToePlayer::O) => 'O',
+                None => '.',
+            };
+            write!(f, "{}", c)?;
+            if i % 3 == 2 {
+                writeln!(f)?;
+            }
+        }
+        Ok(())
     }
 }
 
