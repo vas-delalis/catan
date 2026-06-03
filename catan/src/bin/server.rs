@@ -1,10 +1,10 @@
 use std::sync::{LazyLock, Mutex};
 
 use axum::{
+    Json, Router,
     extract::Path,
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use catan::*;
 use common::GameState;
@@ -53,8 +53,8 @@ async fn apply_action(
 ) -> (StatusCode, Json<Option<ActionResult>>) {
     let mut game = GAME.lock().unwrap();
     let action = game.get_actions(game.current_player()).0[payload.action_id]; // TODO: optimize
-    let result = game.apply_action(action);
-    (StatusCode::OK, Json(result))
+    game.apply_action(action);
+    (StatusCode::OK, Json(None))
 }
 
 #[derive(Serialize)]
