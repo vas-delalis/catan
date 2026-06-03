@@ -24,6 +24,7 @@ name = "agent"
 version = "0.1.0"
 dependencies = [
  "catan",
+ "common",
  "criterion 0.8.2",
  "ctrlc",
  "itertools 0.14.0",
@@ -251,6 +252,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "axum",
+ "common",
  "criterion 0.5.1",
  "enum-map",
  "num",
@@ -348,6 +350,13 @@ name = "clap_lex"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e64b0cc0439b12df2fa678eae89a1c56a529fd067a9115f7827f1fffd22b32"
+
+[[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "tch",
+]
 
 [[package]]
 name = "constant_time_eq"

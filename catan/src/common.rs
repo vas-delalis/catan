@@ -1,6 +1,13 @@
 use std::fmt;
 
 use enum_map::{Enum, EnumMap};
+use serde::{Deserialize, Serialize};
+
+use crate::bundle::Bundle;
+use common::Player as PlayerTrait;
+
+pub use Player::*;
+pub use Resource::*;
 
 pub type HexId = usize;
 pub type VertexId = usize;
@@ -10,12 +17,6 @@ pub const N_HEXES: usize = 19;
 pub const N_VERTICES: usize = 54;
 pub const N_EDGES: usize = 72;
 pub const N_ROLLS: usize = 11;
-
-use serde::{Deserialize, Serialize};
-pub use Player::*;
-pub use Resource::*;
-
-use crate::bundle::Bundle;
 
 #[derive(Debug, Clone, Copy, Enum, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Resource {
@@ -50,10 +51,57 @@ pub enum Action {
     Monopolize(Resource),
     TakeFreeResource(Resource),
     ExchangeResources(((Resource, u8), Resource)),
-    ProposeTrade(((Resource, u8), (Resource, u8))),
-    AcceptTrade(Player),
-    RejectTrade(Player),
     EndTurn,
+}
+
+impl From<usize> for Action {
+    fn from(n: usize) -> Self {
+        let b0 = n & 0xFF;
+        let b1 = (n >> 8) & 0xFF;
+        let b2 = (n >> 16) & 0xFF;
+        let b3 = (n >> 24) & 0xFF;
+        match b0 {
+            0 => Action::RollDice,
+            1 => Action::BuildSettlement(b1),
+            2 => Action::UpgradeSettlement(b1),
+            3 => Action::BuildRoad(b1),
+            4 => Action::BuyDevCard,
+            5 => Action::PlayDevCard(DevCard::from_usize(b1)),
+            6 => Action::MoveRobber(b1),
+            7 => Action::DiscardResource(Resource::from_usize(b1)),
+            8 => Action::StealResource(Player::from_usize(b1)),
+            9 => Action::Monopolize(Resource::from_usize(b1)),
+            10 => Action::TakeFreeResource(Resource::from_usize(b1)),
+            11 => Action::ExchangeResources((
+                (Resource::from_usize(b1), b2 as u8),
+                Resource::from_usize(b3),
+            )),
+            12 => Action::EndTurn,
+            _ => panic!("invalid action index {n}"),
+        }
+    }
+}
+
+impl From<Action> for usize {
+    fn from(value: Action) -> Self {
+        match value {
+            Action::RollDice => 0,
+            Action::BuildSettlement(v) => 1 | (v << 8),
+            Action::UpgradeSettlement(v) => 2 | (v << 8),
+            Action::BuildRoad(e) => 3 | (e << 8),
+            Action::BuyDevCard => 4,
+            Action::PlayDevCard(d) => 5 | (d.into_usize() << 8),
+            Action::MoveRobber(h) => 6 | (h << 8),
+            Action::DiscardResource(r) => 7 | (r.into_usize() << 8),
+            Action::StealResource(p) => 8 | (p.into_usize() << 8),
+            Action::Monopolize(r) => 9 | (r.into_usize() << 8),
+            Action::TakeFreeResource(r) => 10 | (r.into_usize() << 8),
+            Action::ExchangeResources(((from_r, qty), to_r)) => {
+                11 | (from_r.into_usize() << 8) | ((qty as usize) << 16) | (to_r.into_usize() << 24)
+            }
+            Action::EndTurn => 12,
+        }
+    }
 }
 
 impl fmt::Display for Action {
@@ -70,6 +118,19 @@ pub enum Player {
     Orange,
     Red,
     White,
+}
+
+impl From<Player> for usize {
+    fn from(value: Player) -> Self {
+        value as usize
+    }
+}
+
+impl PlayerTrait for Player {
+    const LEN: usize = 4;
+    fn list() -> Vec<Self> {
+        vec![Blue, Orange, Red, White]
+    }
 }
 
 impl Player {
@@ -150,4 +211,57 @@ pub struct HiddenHand {
     pub player: Player,
     pub resources: u8,
     pub dev_cards: u8,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn action_usize_conversion() {
+        use Action::*;
+        let mut actions = vec![];
+        actions.push(RollDice);
+        for v in 0..N_VERTICES {
+            actions.push(BuildSettlement(v));
+        }
+        for v in 0..N_VERTICES {
+            actions.push(UpgradeSettlement(v));
+        }
+        for e in 0..N_EDGES {
+            actions.push(BuildRoad(e));
+        }
+        actions.push(BuyDevCard);
+        for card in DEV_CARDS {
+            actions.push(PlayDevCard(card));
+        }
+        for h in 0..N_HEXES {
+            actions.push(MoveRobber(h));
+        }
+        for r in RESOURCES {
+            actions.push(DiscardResource(r));
+        }
+        for p in PLAYERS {
+            actions.push(StealResource(p));
+        }
+        for r in RESOURCES {
+            actions.push(Monopolize(r));
+        }
+        for r in RESOURCES {
+            actions.push(TakeFreeResource(r));
+        }
+        for from_r in RESOURCES {
+            for to_r in RESOURCES {
+                for qty in [2u8, 3, 4] {
+                    actions.push(ExchangeResources(((from_r, qty), to_r)));
+                }
+            }
+        }
+        actions.push(EndTurn);
+
+        for action in actions {
+            let n: usize = action.into();
+            assert_eq!(Action::from(n), action, "round-trip failed for {action:?}");
+        }
+    }
 }
