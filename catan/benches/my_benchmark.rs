@@ -1,4 +1,5 @@
 use catan::*;
+use common::GameState;
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::seq::IndexedRandom;
 

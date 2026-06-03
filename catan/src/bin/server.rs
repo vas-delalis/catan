@@ -7,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use catan::*;
+use common::GameState;
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 
@@ -51,7 +52,7 @@ async fn apply_action(
     Json(payload): Json<ApplyActionPayload>,
 ) -> (StatusCode, Json<Option<ActionResult>>) {
     let mut game = GAME.lock().unwrap();
-    let action = game.get_actions(game.current_player())[payload.action_id]; // TODO: optimize
+    let action = game.get_actions(game.current_player()).0[payload.action_id]; // TODO: optimize
     let result = game.apply_action(action);
     (StatusCode::OK, Json(result))
 }

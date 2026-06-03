@@ -3,7 +3,7 @@
 mod bank;
 mod board;
 pub mod bundle;
-pub mod common;
+mod common;
 mod state;
 
 pub use board::*;

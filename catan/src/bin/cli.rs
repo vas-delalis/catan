@@ -1,6 +1,7 @@
 use std::io;
 
 use catan::{State as CatanState, *};
+use common::GameState;
 
 fn main() {
     let mut state = CatanState::default();
@@ -35,7 +36,7 @@ fn main() {
     r(White, Edge(2, 0, W));
 
     while !state.is_terminal() {
-        let actions = state.get_actions(state.current_player());
+        let actions = state.get_actions(state.current_player()).0;
         let labels: Vec<String> = actions
             .iter()
             .enumerate()

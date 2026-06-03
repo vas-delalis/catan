@@ -40,6 +40,7 @@ pub enum Purchasable {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Action {
     RollDice,
+    Roll(u8),
     BuildSettlement(VertexId),
     UpgradeSettlement(VertexId),
     BuildRoad(EdgeId),
@@ -62,21 +63,22 @@ impl From<usize> for Action {
         let b3 = (n >> 24) & 0xFF;
         match b0 {
             0 => Action::RollDice,
-            1 => Action::BuildSettlement(b1),
-            2 => Action::UpgradeSettlement(b1),
-            3 => Action::BuildRoad(b1),
-            4 => Action::BuyDevCard,
-            5 => Action::PlayDevCard(DevCard::from_usize(b1)),
-            6 => Action::MoveRobber(b1),
-            7 => Action::DiscardResource(Resource::from_usize(b1)),
-            8 => Action::StealResource(Player::from_usize(b1)),
-            9 => Action::Monopolize(Resource::from_usize(b1)),
-            10 => Action::TakeFreeResource(Resource::from_usize(b1)),
-            11 => Action::ExchangeResources((
+            1 => Action::Roll(b1 as u8),
+            2 => Action::BuildSettlement(b1),
+            3 => Action::UpgradeSettlement(b1),
+            4 => Action::BuildRoad(b1),
+            5 => Action::BuyDevCard,
+            6 => Action::PlayDevCard(DevCard::from_usize(b1)),
+            7 => Action::MoveRobber(b1),
+            8 => Action::DiscardResource(Resource::from_usize(b1)),
+            9 => Action::StealResource(Player::from_usize(b1)),
+            10 => Action::Monopolize(Resource::from_usize(b1)),
+            11 => Action::TakeFreeResource(Resource::from_usize(b1)),
+            12 => Action::ExchangeResources((
                 (Resource::from_usize(b1), b2 as u8),
                 Resource::from_usize(b3),
             )),
-            12 => Action::EndTurn,
+            13 => Action::EndTurn,
             _ => panic!("invalid action index {n}"),
         }
     }
@@ -86,20 +88,21 @@ impl From<Action> for usize {
     fn from(value: Action) -> Self {
         match value {
             Action::RollDice => 0,
-            Action::BuildSettlement(v) => 1 | (v << 8),
-            Action::UpgradeSettlement(v) => 2 | (v << 8),
-            Action::BuildRoad(e) => 3 | (e << 8),
-            Action::BuyDevCard => 4,
-            Action::PlayDevCard(d) => 5 | (d.into_usize() << 8),
-            Action::MoveRobber(h) => 6 | (h << 8),
-            Action::DiscardResource(r) => 7 | (r.into_usize() << 8),
-            Action::StealResource(p) => 8 | (p.into_usize() << 8),
-            Action::Monopolize(r) => 9 | (r.into_usize() << 8),
-            Action::TakeFreeResource(r) => 10 | (r.into_usize() << 8),
+            Action::Roll(v) => 1 | ((v as usize) << 8),
+            Action::BuildSettlement(v) => 2 | (v << 8),
+            Action::UpgradeSettlement(v) => 3 | (v << 8),
+            Action::BuildRoad(e) => 4 | (e << 8),
+            Action::BuyDevCard => 5,
+            Action::PlayDevCard(d) => 6 | (d.into_usize() << 8),
+            Action::MoveRobber(h) => 7 | (h << 8),
+            Action::DiscardResource(r) => 8 | (r.into_usize() << 8),
+            Action::StealResource(p) => 9 | (p.into_usize() << 8),
+            Action::Monopolize(r) => 10 | (r.into_usize() << 8),
+            Action::TakeFreeResource(r) => 11 | (r.into_usize() << 8),
             Action::ExchangeResources(((from_r, qty), to_r)) => {
-                11 | (from_r.into_usize() << 8) | ((qty as usize) << 16) | (to_r.into_usize() << 24)
+                12 | (from_r.into_usize() << 8) | ((qty as usize) << 16) | (to_r.into_usize() << 24)
             }
-            Action::EndTurn => 12,
+            Action::EndTurn => 13,
         }
     }
 }
@@ -222,6 +225,9 @@ mod tests {
         use Action::*;
         let mut actions = vec![];
         actions.push(RollDice);
+        for roll in 2u8..=12 {
+            actions.push(Roll(roll));
+        }
         for v in 0..N_VERTICES {
             actions.push(BuildSettlement(v));
         }

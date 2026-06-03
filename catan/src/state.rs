@@ -1,8 +1,6 @@
-use std::{
-    cmp::min,
-    simd::{cmp::SimdPartialOrd, num::SimdUint},
-};
+use std::{cmp::min, simd::num::SimdUint};
 
+use common::GameState;
 use rand::distr::weighted::WeightedIndex;
 
 use {
@@ -32,13 +30,12 @@ pub struct State {
     dev_cards: EnumMap<Player, Bundle>,
     locked_dev_cards: EnumMap<DevCard, bool>,
     has_played_dev_card: bool,
-
-    has_rolled: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
-    Normal,
+    Normal { has_rolled: bool },
+    Rolling,
     Setup, // Each player's second settlement produces resources at the end of setup
     Discarding(Bundle), // Remaining cards to discard per player
     MovingRobber,
@@ -46,11 +43,11 @@ pub enum Phase {
     RoadBuilding(u8), // Remaining roads to build
     YearOfPlenty(u8), // Remaining resource units to take
     Monopoly,
-    Trading(),
 }
 
 #[derive(Clone)]
 struct PlayerData {
+    // TODO: remove
     resources: Bundle,
 }
 
@@ -82,11 +79,6 @@ impl Default for State {
     }
 }
 
-// impl GameState for State {
-//     type Action = Action;
-//     type Player = Player;
-// }
-
 impl State {
     pub fn new(board: Board) -> Self {
         let bank = Bank::bank();
@@ -103,25 +95,9 @@ impl State {
             dev_cards: EnumMap::from_fn(|_| Bundle::splat(0)),
             locked_dev_cards: EnumMap::from_fn(|_| false),
             army_leader: None,
-            has_rolled: false,
             has_played_dev_card: false,
-            phase: Phase::Normal,
+            phase: Phase::Normal { has_rolled: false },
         }
-    }
-
-    /// Returns the player who picks the next action.
-    pub fn current_player(&self) -> Player {
-        match self.phase {
-            Phase::Discarding(remaining) => *PLAYERS.iter().find(|&p| remaining[*p] > 0).unwrap(),
-            Phase::Setup => {
-                todo!()
-            }
-            _ => self.whose_turn,
-        }
-    }
-
-    pub fn is_terminal(&self) -> bool {
-        self.victory_points(self.whose_turn) >= 10
     }
 
     /// Returns the parts of an observation that remain static throughout the game.
@@ -135,7 +111,7 @@ impl State {
             observer,
             current_player: self.current_player(),
             is_terminal: self.is_terminal(),
-            actions: self.get_actions(observer),
+            actions: self.get_actions(observer).0,
             robber: self.board.robber_hex_id(),
             buildings: PLAYERS
                 .into_iter()
@@ -191,109 +167,6 @@ impl State {
     // === Action generation ===
 
     /// Gets the current player's available actions.
-    pub fn get_actions(&self, player: Player) -> Vec<Action> {
-        if player != self.current_player() {
-            return vec![]; // TODO: allow concurrent actions (e.g. when multiple players must discard)
-        }
-        let player_data = &self.player_data[player];
-
-        match self.phase {
-            Phase::Normal => {
-                let mut actions = vec![];
-                actions.push(if !self.has_rolled { RollDice } else { EndTurn });
-
-                // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
-                for (item, cost) in BUY_COSTS.iter() {
-                    if self.bank.purchasable_count(player, item) > 0
-                        && cost.data.simd_le(self.bank.resources.data).all()
-                        && cost.data.simd_le(player_data.resources.data).all()
-                    {
-                        match item {
-                            Purchasable::DevCard => actions.push(BuyDevCard),
-                            Purchasable::Settlement => {
-                                let slots = self.board.available_settlements(player);
-                                actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
-                            }
-                            Purchasable::City => {
-                                let settlements = self.board.settlements(player);
-                                actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
-                            }
-                            Purchasable::Road => {
-                                let slots = self.board.available_roads(player);
-                                actions.extend(slots.map(|edge_id| BuildRoad(edge_id)));
-                            }
-                        }
-                    }
-                }
-
-                // PlayDevCard
-                if !self.has_played_dev_card {
-                    use DevCard::*;
-
-                    actions.extend(
-                        [Knight, Monopoly, RoadBuilding, YearOfPlenty]
-                            .into_iter()
-                            .filter_map(|card| {
-                                if self.dev_cards[player][card] > 0 && !self.locked_dev_cards[card]
-                                {
-                                    Some(PlayDevCard(card))
-                                } else {
-                                    None
-                                }
-                            }),
-                    );
-                }
-
-                // ExchangeResource (maritime trade)
-                actions.append(&mut self.get_exchange_actions(player));
-                actions
-            }
-            Phase::Setup => todo!(),
-            Phase::StealingResources(hex_id) => self.get_steal_actions(hex_id),
-            Phase::Discarding(_) => self.get_discard_actions(self.current_player()),
-            Phase::MovingRobber => self.get_robber_actions(),
-            Phase::RoadBuilding(remaining) => {
-                let slots = self.board.available_roads(player);
-                // dbg!(player);
-                // dbg!(self.board.available_roads(player));
-                // dbg!(PLAYERS
-                //     .into_iter()
-                //     .flat_map(|p| {
-                //         let settlements = self
-                //             .board
-                //             .settlements(p)
-                //             .map(move |v| (p, self.board.vertex(v), false));
-                //         let cities = self
-                //             .board
-                //             .cities(p)
-                //             .map(move |v| (p, self.board.vertex(v), true));
-                //         settlements.chain(cities)
-                //     })
-                //     .collect::<Vec<(Player, Vertex, bool)>>());
-                // dbg!(PLAYERS
-                //     .into_iter()
-                //     .flat_map(|p| self.board.roads(p).map(move |e| (p, self.board.edge(e))))
-                //     .collect::<Vec<(Player, Edge)>>());
-                assert!(slots.count_ones() > 0);
-                slots
-                    .take(remaining as usize)
-                    .map(|edge_id| BuildRoad(edge_id))
-                    .collect()
-            }
-            Phase::YearOfPlenty(_) => RESOURCES
-                .into_iter()
-                .filter_map(|res| {
-                    if self.bank.resources[res] > 0 {
-                        Some(TakeFreeResource(res))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            Phase::Monopoly => RESOURCES.into_iter().map(|r| Monopolize(r)).collect(),
-            Phase::Trading() => todo!(),
-        }
-    }
 
     fn get_robber_actions(&self) -> Vec<Action> {
         (0..N_HEXES)
@@ -348,9 +221,11 @@ impl State {
         let player = self.current_player();
         match action {
             RollDice => {
-                let roll = self.roll_dice();
-                let prod = self.handle_dice_roll(roll);
-                return Some(ActionResult::DiceRolled(roll, prod));
+                self.phase = Phase::Rolling;
+            }
+            Roll(value) => {
+                let prod = self.handle_dice_roll(value);
+                return Some(ActionResult::DiceRolled(value, prod));
             }
             BuildSettlement(vertex_id) => {
                 self.give_to_bank(player, BUY_COSTS[Purchasable::Settlement]);
@@ -367,11 +242,11 @@ impl State {
                 self.board.add_road(player, edge_id);
                 self.bank.buildings[player][Purchasable::Road] -= 1;
                 self.phase = match self.phase {
-                    Phase::Normal => {
+                    Phase::Normal { has_rolled } => {
                         self.give_to_bank(player, BUY_COSTS[Purchasable::Road]);
-                        Phase::Normal
+                        Phase::Normal { has_rolled }
                     }
-                    Phase::RoadBuilding(1) => Phase::Normal,
+                    Phase::RoadBuilding(1) => Phase::Normal { has_rolled: true },
                     Phase::RoadBuilding(remaining) => Phase::RoadBuilding(remaining - 1),
                     Phase::Setup => Phase::Setup,
                     _ => panic!("tried to build road in invalid phase"),
@@ -382,12 +257,12 @@ impl State {
                 self.phase = if !self.get_steal_actions(hex_id).is_empty() {
                     Phase::StealingResources(hex_id)
                 } else {
-                    Phase::Normal
+                    Phase::Normal { has_rolled: true }
                 }
             }
             StealResource(target) => {
                 let result = self.steal_resource(self.current_player(), target);
-                self.phase = Phase::Normal;
+                self.phase = Phase::Normal { has_rolled: true };
                 if let Some(r) = result {
                     return Some(ActionResult::ResourceStolen(r));
                 }
@@ -425,7 +300,7 @@ impl State {
                     self.player_data[p].resources[res] = 0;
                 }
                 self.player_data[player].resources[res] += total;
-                self.phase = Phase::Normal;
+                self.phase = Phase::Normal { has_rolled: true };
                 return Some(ActionResult::Monopolized(res, total));
             }
             TakeFreeResource(res) => {
@@ -433,7 +308,7 @@ impl State {
                 bundle[res] += 1;
                 self.take_from_bank(player, bundle);
                 self.phase = match self.phase {
-                    Phase::YearOfPlenty(1) => Phase::Normal,
+                    Phase::YearOfPlenty(1) => Phase::Normal { has_rolled: true },
                     Phase::YearOfPlenty(remaining) => Phase::YearOfPlenty(remaining - 1),
                     _ => panic!("tried to take resource in invalid phase"),
                 };
@@ -460,7 +335,7 @@ impl State {
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
                 // TODO: reset state variables
-                self.has_rolled = false;
+                self.phase = Phase::Normal { has_rolled: false }; // EndTurn can only be offered when Phase == Normal
                 self.locked_dev_cards = EnumMap::from_fn(|_| false);
                 self.has_played_dev_card = false;
             }
@@ -528,19 +403,13 @@ impl State {
         Some(res)
     }
 
-    /// Returns the sum of two fair dice rolls.
-    fn roll_dice(&self) -> u8 {
-        let mut rng = rand::rng();
-        rng.random_range(1..=6) + rng.random_range(1..=6)
-    }
-
     /// Carries out the effects of a given dice roll.
     ///
     /// If the roll is a 7: handles resource discarding, moving the robber, etc.
     ///
     /// Otherwise: gives each player their resource production and then returns it.
     fn handle_dice_roll(&mut self, roll: u8) -> Option<EnumMap<Player, Bundle>> {
-        self.has_rolled = true;
+        self.phase = Phase::Normal { has_rolled: true };
         if roll == 7 {
             let mut to_discard = Bundle::splat(0);
             for player in PLAYERS {
@@ -594,7 +463,7 @@ mod tests {
         apply_actions(&mut s, vec![b, o, b, o, g, o, g, o, o]);
 
         // After everyone discards, current player must move the robber.
-        let next_actions = s.get_actions(s.current_player());
+        let next_actions = s.get_actions(s.current_player()).0;
         assert_eq!(s.current_player(), s.whose_turn);
         assert!(next_actions.into_iter().all(|a| matches!(a, MoveRobber(_))))
     }
@@ -607,7 +476,7 @@ mod tests {
         // Move robber to hex with red & white settlements
         s.apply_action(MoveRobber(4));
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert_eq!(actions.len(), 2);
         assert!(actions.contains(&StealResource(Red)));
         assert!(actions.contains(&StealResource(White)));
@@ -623,7 +492,7 @@ mod tests {
         // Move robber back onto desert
         s.apply_action(MoveRobber(s.board.hex_id(Hex(0, 0))));
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         // No steal actions
         assert!(!actions.into_iter().any(|a| matches!(a, StealResource(_))));
     }
@@ -636,7 +505,7 @@ mod tests {
 
         // Move robber to hex only settled by Blue
         s.apply_action(MoveRobber(s.board.hex_id(Hex(0, 2))));
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         // No steal actions
         assert!(!actions.into_iter().any(|a| matches!(a, StealResource(_))));
     }
@@ -649,7 +518,7 @@ mod tests {
 
         // Move robber to hex settled by Blue and Orange
         s.apply_action(MoveRobber(s.board.hex_id(Hex(0, 1))));
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         // Can only steal from Orange
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0], StealResource(Orange));
@@ -684,7 +553,7 @@ mod tests {
 
         s.player_data[Blue].resources = Bundle::splat(4);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(actions
             .into_iter()
             .any(|a| matches!(a, ExchangeResources(((Brick, 4), _)))));
@@ -698,7 +567,7 @@ mod tests {
         s.board
             .add_settlement(Blue, s.board.vertex_id(Vertex(0, -2, N)));
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(actions
             .into_iter()
             .any(|a| matches!(a, ExchangeResources(((Brick, 3), _)))));
@@ -713,7 +582,7 @@ mod tests {
         s.board
             .add_settlement(Blue, s.board.vertex_id(Vertex(2, -3, S)));
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(actions
             .into_iter()
             .any(|a| matches!(a, ExchangeResources(((Grain, 2), _)))));
@@ -726,7 +595,7 @@ mod tests {
 
         s.player_data[Blue].resources = Bundle::splat(4);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(!actions
             .into_iter()
             .any(|a| matches!(a, ExchangeResources((_, _)))));
@@ -760,9 +629,13 @@ mod tests {
         s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NW))));
 
         // An attempt at an implementation-independent way to check if we're back in normal phase
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         let can_roll_dice = actions.iter().any(|a| matches!(a, RollDice));
-        assert!(can_roll_dice || s.has_rolled);
+        if let Phase::Normal { has_rolled } = s.phase {
+            assert!(can_roll_dice || has_rolled);
+        } else {
+            panic!("Phase should be Normal")
+        }
     }
 
     #[test]
@@ -771,7 +644,7 @@ mod tests {
 
         s.activate_dev_card(DevCard::RoadBuilding);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(
             actions.iter().all(|a| matches!(a, BuildRoad(_))),
             "all available actions should be BuildRoad"
@@ -801,7 +674,7 @@ mod tests {
 
         s.activate_dev_card(DevCard::RoadBuilding);
 
-        assert!(matches!(s.phase, Phase::Normal));
+        assert!(matches!(s.phase, Phase::Normal { has_rolled: _ }));
     }
 
     #[test]
@@ -820,7 +693,7 @@ mod tests {
         s.activate_dev_card(DevCard::RoadBuilding);
 
         assert!(s.board.available_roads(p).is_zeros());
-        assert!(matches!(s.phase, Phase::Normal));
+        assert!(matches!(s.phase, Phase::Normal { has_rolled: _ }));
     }
 
     #[test]
@@ -829,7 +702,7 @@ mod tests {
 
         s.activate_dev_card(DevCard::Knight);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(
             actions.iter().all(|a| matches!(a, MoveRobber(_))),
             "all available actions should be MoveRobber"
@@ -873,7 +746,7 @@ mod tests {
 
         s.activate_dev_card(DevCard::Monopoly);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(
             actions.iter().all(|a| matches!(a, Monopolize(_))),
             "all available actions should be Monopolize"
@@ -903,7 +776,7 @@ mod tests {
 
         s.activate_dev_card(DevCard::YearOfPlenty);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(
             actions.iter().all(|a| matches!(a, TakeFreeResource(_))),
             "all available actions should be TakeResource"
@@ -930,7 +803,7 @@ mod tests {
         s.player_data[Blue].resources = Bundle::splat(5);
         s.apply_action(BuyDevCard);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
 
         assert!(!actions.iter().any(|a| matches!(a, PlayDevCard(_))));
     }
@@ -945,12 +818,13 @@ mod tests {
         // Play first dev card
         let play_action = s
             .get_actions(s.current_player())
+            .0
             .into_iter()
             .find(|a| matches!(a, PlayDevCard(_)))
             .unwrap();
         s.apply_action(play_action);
 
-        let actions = s.get_actions(s.current_player());
+        let actions = s.get_actions(s.current_player()).0;
         assert!(!actions.iter().any(|a| matches!(a, PlayDevCard(_))));
     }
 }
