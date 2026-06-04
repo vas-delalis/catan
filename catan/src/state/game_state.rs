@@ -1,10 +1,8 @@
-use std::simd::cmp::SimdPartialOrd;
-
 use common::{GameState, Outcome};
 use enum_map::EnumMap;
 
 use crate::{
-    Action, DevCard, PLAYERS, Phase, Player, Purchasable, RESOURCES, State,
+    Action, PLAYERS, Phase, Player, Purchasable, RESOURCES, State,
     bundle::{BUY_COSTS, Bundle},
 };
 use Action::*;
@@ -104,11 +102,11 @@ impl GameState for State {
                     if p == player {
                         continue;
                     }
-                    let count = self.player_data[p].resources[res];
+                    let count = self.player_resources[p][res];
                     total += count;
-                    self.player_data[p].resources[res] = 0;
+                    self.player_resources[p][res] = 0;
                 }
-                self.player_data[player].resources[res] += total;
+                self.player_resources[player][res] += total;
                 self.phase = Phase::Normal;
             }
             TakeFreeResource(res) => {
@@ -163,109 +161,19 @@ impl GameState for State {
         if player != self.current_player() {
             return (vec![], None);
         }
-        let player_data = &self.player_data[player];
 
-        match self.phase {
-            Phase::Normal => {
-                let mut actions = vec![EndTurn];
-
-                // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
-                for (item, cost) in BUY_COSTS.iter() {
-                    if self.bank.purchasable_count(player, item) > 0
-                        && cost.data.simd_le(self.bank.resources.data).all()
-                        && cost.data.simd_le(player_data.resources.data).all()
-                    {
-                        match item {
-                            Purchasable::DevCard => actions.push(BuyDevCard),
-                            Purchasable::Settlement => {
-                                let slots = self.board.available_settlements(player);
-                                actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
-                            }
-                            Purchasable::City => {
-                                let settlements = self.board.settlements(player);
-                                actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
-                            }
-                            Purchasable::Road => {
-                                let slots = self.board.available_roads(player);
-                                actions.extend(slots.map(|edge_id| BuildRoad(edge_id)));
-                            }
-                        }
-                    }
-                }
-
-                // PlayDevCard
-                if !self.has_played_dev_card {
-                    use DevCard::*;
-
-                    actions.extend(
-                        [Knight, Monopoly, RoadBuilding, YearOfPlenty]
-                            .into_iter()
-                            .filter_map(|card| {
-                                if self.dev_cards[player][card] > 0 && !self.locked_dev_cards[card]
-                                {
-                                    Some(PlayDevCard(card))
-                                } else {
-                                    None
-                                }
-                            }),
-                    );
-                }
-
-                // ExchangeResource (maritime trade)
-                actions.append(&mut self.get_exchange_actions(player));
-                (actions, None)
-            }
-            Phase::Rolling => (Vec::from(ROLL_ACTIONS), Some(Vec::from(ROLL_WEIGHTS))),
+        let actions = match self.phase {
+            Phase::Rolling => return (Vec::from(ROLL_ACTIONS), Some(Vec::from(ROLL_WEIGHTS))),
+            Phase::Normal => self.get_normal_actions(player),
             Phase::Setup => todo!(),
-            Phase::StealingResources(hex_id) => (self.get_steal_actions(hex_id), None),
-            Phase::Discarding(_) => (self.get_discard_actions(self.current_player()), None),
-            Phase::MovingRobber => (self.get_robber_actions(), None),
-            Phase::RoadBuilding(remaining) => {
-                let slots = self.board.available_roads(player);
-                // dbg!(player);
-                // dbg!(self.board.available_roads(player));
-                // dbg!(PLAYERS
-                //     .into_iter()
-                //     .flat_map(|p| {
-                //         let settlements = self
-                //             .board
-                //             .settlements(p)
-                //             .map(move |v| (p, self.board.vertex(v), false));
-                //         let cities = self
-                //             .board
-                //             .cities(p)
-                //             .map(move |v| (p, self.board.vertex(v), true));
-                //         settlements.chain(cities)
-                //     })
-                //     .collect::<Vec<(Player, Vertex, bool)>>());
-                // dbg!(PLAYERS
-                //     .into_iter()
-                //     .flat_map(|p| self.board.roads(p).map(move |e| (p, self.board.edge(e))))
-                //     .collect::<Vec<(Player, Edge)>>());
-                assert!(slots.count_ones() > 0);
-                (
-                    slots
-                        .take(remaining as usize)
-                        .map(|edge_id| BuildRoad(edge_id))
-                        .collect(),
-                    None,
-                )
-            }
-            Phase::YearOfPlenty(_) => (
-                RESOURCES
-                    .into_iter()
-                    .filter_map(|res| {
-                        if self.bank.resources[res] > 0 {
-                            Some(TakeFreeResource(res))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect(),
-                None,
-            ),
-            Phase::Monopoly => (RESOURCES.into_iter().map(|r| Monopolize(r)).collect(), None),
-        }
+            Phase::StealingResources(hex_id) => self.get_steal_actions(hex_id),
+            Phase::Discarding(_) => self.get_discard_actions(self.current_player()),
+            Phase::MovingRobber => self.get_robber_actions(),
+            Phase::RoadBuilding(remaining) => self.get_road_building_actions(player, remaining),
+            Phase::YearOfPlenty(_) => self.get_year_of_plenty_actions(),
+            Phase::Monopoly => RESOURCES.into_iter().map(|r| Monopolize(r)).collect(),
+        };
+        (actions, None)
     }
 
     fn is_random(&self) -> bool {

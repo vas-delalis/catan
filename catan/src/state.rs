@@ -1,14 +1,21 @@
-use std::{cmp::min, simd::num::SimdUint};
+use std::{
+    cmp::min,
+    simd::{cmp::SimdPartialOrd, num::SimdUint},
+};
 
 use common::GameState;
 use rand::distr::weighted::WeightedIndex;
+
+use crate::bundle::BUY_COSTS;
 
 use {
     crate::Action::*, crate::bank::Bank, crate::board::*, crate::bundle::Bundle, crate::common::*,
     enum_map::EnumMap, rand::prelude::*,
 };
 
+mod display;
 mod game_state;
+mod image;
 
 #[derive(Clone)]
 pub struct State {
@@ -17,7 +24,7 @@ pub struct State {
     pub board: Board,
     whose_turn: Player,
     turn_order: [Player; 4],
-    player_data: EnumMap<Player, PlayerData>,
+    player_resources: EnumMap<Player, Bundle>,
 
     armies: Bundle,
     army_leader: Option<Player>,
@@ -38,12 +45,6 @@ pub enum Phase {
     RoadBuilding(u8), // Remaining roads to build
     YearOfPlenty(u8), // Remaining resource units to take
     Monopoly,
-}
-
-#[derive(Clone)]
-struct PlayerData {
-    // TODO: remove
-    resources: Bundle,
 }
 
 impl Default for State {
@@ -83,9 +84,7 @@ impl State {
             board,
             whose_turn: PLAYERS[0],
             turn_order: PLAYERS,
-            player_data: EnumMap::from_fn(|_| PlayerData {
-                resources: Bundle::splat(0),
-            }),
+            player_resources: EnumMap::from_fn(|_| Bundle::splat(0)),
             armies: Bundle::splat(0),
             dev_cards: EnumMap::from_fn(|_| Bundle::splat(0)),
             locked_dev_cards: EnumMap::from_fn(|_| false),
@@ -121,7 +120,7 @@ impl State {
                 .flat_map(|p| self.board.roads(p).map(move |e| (p, e)))
                 .collect(),
             observer_hand: ObserverHand {
-                resources: EnumMap::from_fn(|r| self.player_data[observer].resources[r]),
+                resources: EnumMap::from_fn(|r| self.player_resources[observer][r]),
                 dev_cards: EnumMap::from_fn(|c| self.dev_cards[observer][c]),
             },
             hidden_hands: PLAYERS
@@ -129,7 +128,7 @@ impl State {
                 .filter(|&p| p != observer)
                 .map(|p| HiddenHand {
                     player: p,
-                    resources: self.player_data[p].resources.reduce_sum(),
+                    resources: self.player_resources[p].reduce_sum(),
                     dev_cards: self.dev_cards[p].reduce_sum(),
                 })
                 .collect(),
@@ -150,16 +149,66 @@ impl State {
     /// Transfers resources from bank to player
     fn take_from_bank(&mut self, player: Player, bundle: Bundle) {
         self.bank.resources -= bundle;
-        self.player_data[player].resources += bundle;
+        self.player_resources[player] += bundle;
     }
 
     /// Transfers resources from player to bank
     fn give_to_bank(&mut self, player: Player, bundle: Bundle) {
         self.bank.resources += bundle;
-        self.player_data[player].resources -= bundle;
+        self.player_resources[player] -= bundle;
     }
 
     // === Action generation ===
+
+    fn get_normal_actions(&self, player: Player) -> Vec<Action> {
+        let mut actions = vec![EndTurn];
+        let resources = &self.player_resources[player];
+
+        // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
+        for (item, cost) in BUY_COSTS.iter() {
+            if self.bank.purchasable_count(player, item) > 0
+                && cost.data.simd_le(self.bank.resources.data).all()
+                && cost.data.simd_le(resources.data).all()
+            {
+                match item {
+                    Purchasable::DevCard => actions.push(BuyDevCard),
+                    Purchasable::Settlement => {
+                        let slots = self.board.available_settlements(player);
+                        actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
+                    }
+                    Purchasable::City => {
+                        let settlements = self.board.settlements(player);
+                        actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
+                    }
+                    Purchasable::Road => {
+                        let slots = self.board.available_roads(player);
+                        actions.extend(slots.map(|edge_id| BuildRoad(edge_id)));
+                    }
+                }
+            }
+        }
+
+        // PlayDevCard
+        if !self.has_played_dev_card {
+            use DevCard::*;
+
+            actions.extend(
+                [Knight, Monopoly, RoadBuilding, YearOfPlenty]
+                    .into_iter()
+                    .filter_map(|card| {
+                        if self.dev_cards[player][card] > 0 && !self.locked_dev_cards[card] {
+                            Some(PlayDevCard(card))
+                        } else {
+                            None
+                        }
+                    }),
+            );
+        }
+
+        // ExchangeResource (maritime trade)
+        actions.append(&mut self.get_exchange_actions(player));
+        actions
+    }
 
     fn get_robber_actions(&self) -> Vec<Action> {
         (0..N_HEXES)
@@ -180,7 +229,7 @@ impl State {
     fn get_discard_actions(&self, player: Player) -> Vec<Action> {
         RESOURCES
             .into_iter()
-            .filter(|&r| self.player_data[player].resources[r] > 0)
+            .filter(|&r| self.player_resources[player][r] > 0)
             .map(|r| DiscardResource(r))
             .collect()
     }
@@ -192,7 +241,7 @@ impl State {
 
         for res1 in RESOURCES {
             // Check if player has enough of res1
-            if self.player_data[player].resources[res1] < ratios[res1] {
+            if self.player_resources[player][res1] < ratios[res1] {
                 continue;
             }
             for res2 in RESOURCES {
@@ -204,6 +253,49 @@ impl State {
             }
         }
         actions
+    }
+
+    fn get_road_building_actions(&self, player: Player, remaining: u8) -> Vec<Action> {
+        let slots = self.board.available_roads(player);
+        // dbg!(player);
+        // dbg!(self.board.available_roads(player));
+        // dbg!(PLAYERS
+        //     .into_iter()
+        //     .flat_map(|p| {
+        //         let settlements = self
+        //             .board
+        //             .settlements(p)
+        //             .map(move |v| (p, self.board.vertex(v), false));
+        //         let cities = self
+        //             .board
+        //             .cities(p)
+        //             .map(move |v| (p, self.board.vertex(v), true));
+        //         settlements.chain(cities)
+        //     })
+        //     .collect::<Vec<(Player, Vertex, bool)>>());
+        // dbg!(PLAYERS
+        //     .into_iter()
+        //     .flat_map(|p| self.board.roads(p).map(move |e| (p, self.board.edge(e))))
+        //     .collect::<Vec<(Player, Edge)>>());
+        assert!(slots.count_ones() > 0);
+
+        slots
+            .take(remaining as usize)
+            .map(|edge_id| BuildRoad(edge_id))
+            .collect()
+    }
+
+    fn get_year_of_plenty_actions(&self) -> Vec<Action> {
+        RESOURCES
+            .into_iter()
+            .filter_map(|res| {
+                if self.bank.resources[res] > 0 {
+                    Some(TakeFreeResource(res))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     // === Action execution/application ===
@@ -251,7 +343,7 @@ impl State {
     /// and returns the resource type (or `None` if target had nothing to steal).
     fn steal_resource(&mut self, player: Player, target: Player) -> Option<Resource> {
         assert_ne!(player, target);
-        let target_bundle = &mut self.player_data[target].resources;
+        let target_bundle = &mut self.player_resources[target];
 
         if target_bundle.count_nonzero() == 0 {
             return None;
@@ -263,7 +355,7 @@ impl State {
 
         let res = RESOURCES[index.sample(&mut rng)];
         target_bundle[res] -= 1;
-        let player_bundle = &mut self.player_data[player].resources;
+        let player_bundle = &mut self.player_resources[player];
         player_bundle[res] += 1;
         Some(res)
     }
@@ -278,7 +370,7 @@ impl State {
         if roll == 7 {
             let mut to_discard = Bundle::splat(0);
             for player in PLAYERS {
-                let resources = &self.player_data[player].resources;
+                let resources = &self.player_resources[player];
                 let sum = resources.reduce_sum();
                 if sum > 7 {
                     to_discard[player] = sum / 2;
@@ -318,9 +410,9 @@ mod tests {
     fn resource_discarding() {
         // TODO: split
         let mut s = State::default();
-        s.player_data[Blue].resources = Bundle::from_slice(&[2, 2, 2, 2, 0]);
-        s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
-        s.player_data[Red].resources = Bundle::from_slice(&[2, 2, 0, 0, 0]);
+        s.player_resources[Blue] = Bundle::from_slice(&[2, 2, 2, 2, 0]);
+        s.player_resources[Orange] = Bundle::from_slice(&[0, 0, 0, 5, 6]);
+        s.player_resources[Red] = Bundle::from_slice(&[2, 2, 0, 0, 0]);
         s.handle_dice_roll(7);
         let b = DiscardResource(Brick);
         let g = DiscardResource(Grain);
@@ -397,8 +489,8 @@ mod tests {
         let mut s = State::default();
         let starting_blue = Bundle::from_slice(&[2, 2, 2, 0, 0]);
         let starting_red = Bundle::from_slice(&[2, 2, 0, 0, 0]);
-        s.player_data[Blue].resources = starting_blue;
-        s.player_data[Red].resources = starting_red;
+        s.player_resources[Blue] = starting_blue;
+        s.player_resources[Red] = starting_red;
         s.handle_dice_roll(7);
         s.apply_action(MoveRobber(4));
 
@@ -407,19 +499,17 @@ mod tests {
 
         // Blue gains 1, red loses 1. Stolen resource is Brick or Grain, since that's all red had.
         assert_eq!(
-            s.player_data[Red].resources.reduce_sum(),
+            s.player_resources[Red].reduce_sum(),
             starting_red.reduce_sum() - 1
         );
-        assert!(
-            s.player_data[Blue].resources[Brick] == 3 || s.player_data[Blue].resources[Grain] == 3
-        );
+        assert!(s.player_resources[Blue][Brick] == 3 || s.player_resources[Blue][Grain] == 3);
     }
 
     #[test]
     fn can_exchange_4_to_1() {
         let mut s = State::default();
 
-        s.player_data[Blue].resources = Bundle::splat(4);
+        s.player_resources[Blue] = Bundle::splat(4);
 
         s.apply_action(Roll(2));
 
@@ -433,7 +523,7 @@ mod tests {
     #[test]
     fn can_exchange_3_to_1_with_generic_harbor() {
         let mut s = State::default();
-        s.player_data[Blue].resources = Bundle::splat(3);
+        s.player_resources[Blue] = Bundle::splat(3);
 
         // Add generic harbor
         s.board
@@ -452,7 +542,7 @@ mod tests {
     #[test]
     fn can_exchange_2_to_1_with_resource_harbor() {
         let mut s = State::default();
-        s.player_data[Blue].resources = Bundle::splat(2);
+        s.player_resources[Blue] = Bundle::splat(2);
 
         // Add grain harbor
         s.board
@@ -473,7 +563,7 @@ mod tests {
         let mut s = State::default();
         s.bank.resources = Bundle::splat(0);
 
-        s.player_data[Blue].resources = Bundle::splat(4);
+        s.player_resources[Blue] = Bundle::splat(4);
 
         let actions = s.get_actions(s.current_player()).0;
         assert!(
@@ -486,19 +576,19 @@ mod tests {
     #[test]
     fn exchange_resources() {
         let mut s = State::default();
-        s.player_data[Blue].resources = Bundle::splat(4);
+        s.player_resources[Blue] = Bundle::splat(4);
 
         s.apply_action(ExchangeResources(((Brick, 4), Grain)));
 
-        assert_eq!(s.player_data[Blue].resources[Brick], 0);
-        assert_eq!(s.player_data[Blue].resources[Grain], 5);
+        assert_eq!(s.player_resources[Blue][Brick], 0);
+        assert_eq!(s.player_resources[Blue][Grain], 5);
     }
 
     #[test]
     fn can_build_road_in_normal_phase() {
         let mut s = State::default();
         s.apply_action(Roll(2));
-        s.player_data[Blue].resources = BUY_COSTS[Purchasable::Road];
+        s.player_resources[Blue] = BUY_COSTS[Purchasable::Road];
 
         s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
     }
@@ -531,13 +621,13 @@ mod tests {
     fn roads_from_road_building_card_are_free() {
         let mut s = State::default();
         let starting_resources = Bundle::splat(5);
-        s.player_data[Blue].resources = starting_resources;
+        s.player_resources[Blue] = starting_resources;
         s.activate_dev_card(DevCard::RoadBuilding);
 
         s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
 
         assert_eq!(
-            s.player_data[Blue].resources, starting_resources,
+            s.player_resources[Blue], starting_resources,
             "resources should remain unchanged after building road"
         );
     }
@@ -634,18 +724,18 @@ mod tests {
     #[test]
     fn monopolizing_transfers_all_resources_of_type() {
         let mut s = State::default();
-        s.player_data[Blue].resources = Bundle::from_slice(&[2, 2, 2, 2, 0]);
-        s.player_data[Orange].resources = Bundle::from_slice(&[0, 0, 0, 5, 6]);
-        s.player_data[Red].resources = Bundle::from_slice(&[2, 2, 0, 0, 0]);
-        s.player_data[White].resources = Bundle::from_slice(&[1, 2, 0, 0, 0]);
+        s.player_resources[Blue] = Bundle::from_slice(&[2, 2, 2, 2, 0]);
+        s.player_resources[Orange] = Bundle::from_slice(&[0, 0, 0, 5, 6]);
+        s.player_resources[Red] = Bundle::from_slice(&[2, 2, 0, 0, 0]);
+        s.player_resources[White] = Bundle::from_slice(&[1, 2, 0, 0, 0]);
         s.activate_dev_card(DevCard::Monopoly);
 
         s.apply_action(Monopolize(Brick));
 
-        assert_eq!(s.player_data[Blue].resources[Brick], 5);
-        assert_eq!(s.player_data[Orange].resources[Brick], 0);
-        assert_eq!(s.player_data[Red].resources[Brick], 0);
-        assert_eq!(s.player_data[White].resources[Brick], 0);
+        assert_eq!(s.player_resources[Blue][Brick], 5);
+        assert_eq!(s.player_resources[Orange][Brick], 0);
+        assert_eq!(s.player_resources[Red][Brick], 0);
+        assert_eq!(s.player_resources[White][Brick], 0);
     }
 
     #[test]
@@ -664,21 +754,21 @@ mod tests {
     #[test]
     fn take_resource_transfers_from_bank_to_player() {
         let mut s = State::default();
-        s.player_data[Blue].resources = Bundle::splat(0);
+        s.player_resources[Blue] = Bundle::splat(0);
         let bank_before = s.bank.resources[Brick];
         s.activate_dev_card(DevCard::YearOfPlenty);
 
         s.apply_action(TakeFreeResource(Brick));
         s.apply_action(TakeFreeResource(Brick));
 
-        assert_eq!(s.player_data[Blue].resources[Brick], 2);
+        assert_eq!(s.player_resources[Blue][Brick], 2);
         assert_eq!(s.bank.resources[Brick], bank_before - 2);
     }
 
     #[test]
     fn newly_bought_dev_cards_are_not_playable() {
         let mut s = State::default();
-        s.player_data[Blue].resources = Bundle::splat(5);
+        s.player_resources[Blue] = Bundle::splat(5);
         s.apply_action(BuyDevCard);
 
         let actions = s.get_actions(s.current_player()).0;
