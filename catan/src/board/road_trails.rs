@@ -11,15 +11,16 @@ use std::{
     fs::File,
     hash::BuildHasher,
     io::{BufWriter, Read},
+    path::PathBuf,
 };
 
-use crate::{board::shared_data::ADJACENCY, Bitboard, EdgeId};
+use crate::{Bitboard, EdgeId, board::shared_data::ADJACENCY};
 use ahash::RandomState;
 use num::Zero;
-use rkyv::{api::high::to_bytes_in, ser::writer::IoWriter, Archive, Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize, api::high::to_bytes_in, ser::writer::IoWriter};
 use rkyv_util::owned::OwnedArchive;
 
-const LOOKUP_TABLE_PATH: &str = "roads.bin";
+const LOOKUP_TABLE_NAME: &str = "roads.bin";
 const AHASH_SEEDS: (u64, u64, u64, u64) = (7129002836, 567957864, 9421963134, 7836118570);
 const HASH_MAP_CAPACITY: usize = 38_000_000;
 
@@ -53,9 +54,16 @@ impl BuildHasher for SeededRandomState {
 }
 
 impl RoadTrailTableLoader {
+    fn get_path() -> PathBuf {
+        let mut path = std::env::home_dir().expect("home dir should be available");
+        path.push(".local/share/catan");
+        path.push(LOOKUP_TABLE_NAME);
+        path
+    }
+
     pub fn load() -> OwnedArchive<RoadTrailTableLoader, Vec<u8>> {
-        let mut file =
-            File::open(LOOKUP_TABLE_PATH).expect(&format!("{} should exist", LOOKUP_TABLE_PATH));
+        let path = Self::get_path();
+        let mut file = File::open(&path).expect(&format!("{} should exist", path.display()));
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).unwrap();
 
@@ -63,6 +71,9 @@ impl RoadTrailTableLoader {
     }
 
     pub fn generate_and_save() -> Result<(), Box<dyn Error>> {
+        let path = Self::get_path();
+        std::fs::create_dir_all(&path.parent().unwrap()).unwrap();
+
         let mut table: RoadTrailHashMap =
             HashMap::with_capacity_and_hasher(HASH_MAP_CAPACITY, SeededRandomState::new());
 
@@ -73,7 +84,7 @@ impl RoadTrailTableLoader {
 
         table.shrink_to_fit();
 
-        let file = File::create(LOOKUP_TABLE_PATH)?;
+        let file = File::create(path)?;
         let writer = IoWriter::new(BufWriter::new(file));
 
         to_bytes_in::<_, rkyv::rancor::Error>(&table, writer)?;
