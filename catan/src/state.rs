@@ -29,7 +29,7 @@ pub struct State {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
-    Normal { has_rolled: bool },
+    Normal,
     Rolling,
     Setup, // Each player's second settlement produces resources at the end of setup
     Discarding(Bundle), // Remaining cards to discard per player
@@ -91,7 +91,7 @@ impl State {
             locked_dev_cards: EnumMap::from_fn(|_| false),
             army_leader: None,
             has_played_dev_card: false,
-            phase: Phase::Normal { has_rolled: false },
+            phase: Phase::Rolling,
         }
     }
 
@@ -160,8 +160,6 @@ impl State {
     }
 
     // === Action generation ===
-
-    /// Gets the current player's available actions.
 
     fn get_robber_actions(&self) -> Vec<Action> {
         (0..N_HEXES)
@@ -276,7 +274,7 @@ impl State {
     ///
     /// Otherwise: gives each player their resource production and then returns it.
     fn handle_dice_roll(&mut self, roll: u8) -> Option<EnumMap<Player, Bundle>> {
-        self.phase = Phase::Normal { has_rolled: true };
+        self.phase = Phase::Normal;
         if roll == 7 {
             let mut to_discard = Bundle::splat(0);
             for player in PLAYERS {
@@ -306,6 +304,7 @@ impl State {
 #[cfg(test)]
 mod tests {
     use crate::bundle::BUY_COSTS;
+    use std::assert_matches;
 
     use super::*;
 
@@ -422,6 +421,8 @@ mod tests {
 
         s.player_data[Blue].resources = Bundle::splat(4);
 
+        s.apply_action(Roll(2));
+
         let actions = s.get_actions(s.current_player()).0;
         assert!(
             actions
@@ -437,6 +438,8 @@ mod tests {
         // Add generic harbor
         s.board
             .add_settlement(Blue, s.board.vertex_id(Vertex(0, -2, N)));
+
+        s.apply_action(Roll(2));
 
         let actions = s.get_actions(s.current_player()).0;
         assert!(
@@ -454,6 +457,8 @@ mod tests {
         // Add grain harbor
         s.board
             .add_settlement(Blue, s.board.vertex_id(Vertex(2, -3, S)));
+
+        s.apply_action(Roll(2));
 
         let actions = s.get_actions(s.current_player()).0;
         assert!(
@@ -492,6 +497,7 @@ mod tests {
     #[test]
     fn can_build_road_in_normal_phase() {
         let mut s = State::default();
+        s.apply_action(Roll(2));
         s.player_data[Blue].resources = BUY_COSTS[Purchasable::Road];
 
         s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
@@ -505,14 +511,7 @@ mod tests {
         s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NE))));
         s.apply_action(BuildRoad(s.board.edge_id(Edge(0, 1, NW))));
 
-        // An attempt at an implementation-independent way to check if we're back in normal phase
-        let actions = s.get_actions(s.current_player()).0;
-        let can_roll_dice = actions.iter().any(|a| matches!(a, RollDice));
-        if let Phase::Normal { has_rolled } = s.phase {
-            assert!(can_roll_dice || has_rolled);
-        } else {
-            panic!("Phase should be Normal")
-        }
+        assert_matches!(s.phase, Phase::Normal);
     }
 
     #[test]
@@ -546,17 +545,19 @@ mod tests {
     #[test]
     fn skip_road_building_if_no_roads_available() {
         let mut s = State::default();
+        s.apply_action(Roll(2));
         let p = s.current_player();
         s.bank.buildings[p][Purchasable::Road] = 0;
 
         s.activate_dev_card(DevCard::RoadBuilding);
 
-        assert!(matches!(s.phase, Phase::Normal { has_rolled: _ }));
+        assert_matches!(s.phase, Phase::Normal);
     }
 
     #[test]
     fn skip_road_building_if_no_road_slots_available() {
         let mut s = State::with_board(Board::default());
+        s.apply_action(Roll(2));
         let p = s.current_player();
         let p2 = p.next();
 
@@ -570,7 +571,7 @@ mod tests {
         s.activate_dev_card(DevCard::RoadBuilding);
 
         assert!(s.board.available_roads(p).is_zeros());
-        assert!(matches!(s.phase, Phase::Normal { has_rolled: _ }));
+        assert_matches!(s.phase, Phase::Normal);
     }
 
     #[test]
@@ -688,6 +689,7 @@ mod tests {
     #[test]
     fn max_one_dev_card_played_per_turn() {
         let mut s = State::default();
+        s.apply_action(Roll(2));
         s.apply_action(BuyDevCard);
         s.apply_action(BuyDevCard);
         s.locked_dev_cards = EnumMap::from_fn(|_| false);

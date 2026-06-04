@@ -54,11 +54,11 @@ impl GameState for State {
                 self.board.add_road(player, edge_id);
                 self.bank.buildings[player][Purchasable::Road] -= 1;
                 self.phase = match self.phase {
-                    Phase::Normal { has_rolled } => {
+                    Phase::Normal => {
                         self.give_to_bank(player, BUY_COSTS[Purchasable::Road]);
-                        Phase::Normal { has_rolled }
+                        Phase::Normal
                     }
-                    Phase::RoadBuilding(1) => Phase::Normal { has_rolled: true },
+                    Phase::RoadBuilding(1) => Phase::Normal,
                     Phase::RoadBuilding(remaining) => Phase::RoadBuilding(remaining - 1),
                     Phase::Setup => Phase::Setup,
                     _ => panic!("tried to build road in invalid phase"),
@@ -69,12 +69,12 @@ impl GameState for State {
                 self.phase = if !self.get_steal_actions(hex_id).is_empty() {
                     Phase::StealingResources(hex_id)
                 } else {
-                    Phase::Normal { has_rolled: true }
+                    Phase::Normal
                 }
             }
             StealResource(target) => {
                 self.steal_resource(self.current_player(), target);
-                self.phase = Phase::Normal { has_rolled: true };
+                self.phase = Phase::Normal;
             }
             DiscardResource(res) => {
                 let mut bundle = Bundle::splat(0);
@@ -109,14 +109,14 @@ impl GameState for State {
                     self.player_data[p].resources[res] = 0;
                 }
                 self.player_data[player].resources[res] += total;
-                self.phase = Phase::Normal { has_rolled: true };
+                self.phase = Phase::Normal;
             }
             TakeFreeResource(res) => {
                 let mut bundle = Bundle::splat(0);
                 bundle[res] += 1;
                 self.take_from_bank(player, bundle);
                 self.phase = match self.phase {
-                    Phase::YearOfPlenty(1) => Phase::Normal { has_rolled: true },
+                    Phase::YearOfPlenty(1) => Phase::Normal,
                     Phase::YearOfPlenty(remaining) => Phase::YearOfPlenty(remaining - 1),
                     _ => panic!("tried to take resource in invalid phase"),
                 };
@@ -142,7 +142,7 @@ impl GameState for State {
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
                 // TODO: reset state variables
-                self.phase = Phase::Normal { has_rolled: false }; // EndTurn can only be offered when Phase == Normal
+                self.phase = Phase::Rolling;
                 self.locked_dev_cards = EnumMap::from_fn(|_| false);
                 self.has_played_dev_card = false;
             }
@@ -161,14 +161,13 @@ impl GameState for State {
 
     fn get_actions(&self, player: Self::Player) -> (Vec<Self::Action>, Option<Vec<f64>>) {
         if player != self.current_player() {
-            return (vec![], None); // TODO: allow concurrent actions (e.g. when multiple players must discard)
+            return (vec![], None);
         }
         let player_data = &self.player_data[player];
 
         match self.phase {
-            Phase::Normal { has_rolled } => {
-                let mut actions = vec![];
-                actions.push(if !has_rolled { RollDice } else { EndTurn });
+            Phase::Normal => {
+                let mut actions = vec![EndTurn];
 
                 // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
                 for (item, cost) in BUY_COSTS.iter() {
@@ -293,7 +292,7 @@ impl GameState for State {
         if player == self.whose_turn {
             return Some((Outcome::Win, 1.0));
         }
-        Some((Outcome::Loss, -1.0))
+        Some((Outcome::Loss, -0.3333))
     }
 
     fn pairwise_outcome(
