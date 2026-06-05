@@ -227,8 +227,16 @@ impl Board {
         for enemy in player.enemies() {
             let mut enemy_buildings = verts & self.player_buildings[enemy];
             if enemy_buildings.count_ones() == 1 {
-                self.player_road_slots[player] &=
-                    !ADJACENCY.vert_to_edges[enemy_buildings.next().unwrap()];
+                let building = enemy_buildings.next().unwrap();
+                let building_edges = ADJACENCY.vert_to_edges[building];
+                if let Some(edge_in_question) = (building_edges & !self.road_slots).next() {
+                    if (ADJACENCY.edge_to_edges[edge_in_question] & self.player_roads[player])
+                        .count_ones()
+                        == 1
+                    {
+                        self.player_road_slots[player] &= !ADJACENCY.vert_to_edges[building];
+                    }
+                }
                 break;
             }
         }
@@ -313,7 +321,7 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use enum_map::{enum_map, Enum};
+    use enum_map::{Enum, enum_map};
 
     // Helpers
 
@@ -632,6 +640,43 @@ mod tests {
         b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
 
         b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+    }
+
+    #[test]
+    fn old_enemy_settlement_allows_road_that_goes_around2() {
+        let mut b = Board::default();
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NW))));
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+    }
+
+    #[test]
+    fn new_enemy_settlement_allows_road_that_goes_around2() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NW))));
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NW))));
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
     }
