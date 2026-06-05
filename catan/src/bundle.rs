@@ -11,7 +11,7 @@ use std::{
     sync::LazyLock,
 };
 
-use enum_map::{enum_map, Enum, EnumMap};
+use enum_map::{Enum, EnumMap, enum_map};
 use serde::Serialize;
 
 use crate::common::*;

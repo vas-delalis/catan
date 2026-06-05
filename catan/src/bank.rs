@@ -1,14 +1,12 @@
 use crate::{bundle::Bundle, common::*};
-use enum_map::{enum_map, Enum, EnumMap};
-use rand::{distr::weighted::WeightedIndex, prelude::Distribution, rng};
 use DevCard::*;
+use enum_map::{EnumMap, enum_map};
 
 #[derive(Clone)]
 pub struct Bank {
     pub resources: Bundle,
     pub buildings: EnumMap<Player, Bundle>,
     dev_cards: Bundle,
-    dev_card_rand_index: WeightedIndex<u8>,
 }
 
 impl Bank {
@@ -27,7 +25,6 @@ impl Bank {
         Bank {
             resources: Bundle::from_slice(&resources),
             dev_cards: Bundle::from_slice(&cards),
-            dev_card_rand_index: WeightedIndex::new(cards).unwrap(),
             buildings: enum_map! {
                 _ => Bundle::from_slice(&enum_map! {
                     Purchasable::Road => 13, // TODO: change to 15 when setup-phase roads no longer appear out of thin air
@@ -46,16 +43,13 @@ impl Bank {
         }
     }
 
-    pub fn draw_random_dev_card(&mut self) -> DevCard {
-        let mut rng = rng();
-        let card = DevCard::from_usize(self.dev_card_rand_index.sample(&mut rng));
-        self.dev_cards[card] -= 1;
-        if self.dev_cards.reduce_sum() > 0 {
-            self.dev_card_rand_index
-                .update_weights(&[(card as usize, &self.dev_cards[card])])
-                .unwrap();
-        }
-        card
+    pub fn dev_card_weights(&self) -> Vec<f64> {
+        self.dev_cards
+            .data
+            .as_array()
+            .iter()
+            .map(|&n| n as f64)
+            .collect()
     }
 
     pub fn take_dev_card(&mut self, card: DevCard) {
@@ -65,21 +59,5 @@ impl Bank {
             card
         );
         self.dev_cards[card] -= 1;
-        self.dev_card_rand_index
-            .update_weights(&[(card as usize, &self.dev_cards[card])])
-            .unwrap();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn can_draw_all_dev_cards() {
-        let mut b = Bank::bank();
-        for _ in 0..b.purchasable_count(Blue, Purchasable::DevCard) {
-            b.draw_random_dev_card();
-        }
     }
 }

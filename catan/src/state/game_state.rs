@@ -2,7 +2,9 @@ use common::{GameState, Outcome};
 use enum_map::EnumMap;
 
 use crate::{
-    Action, PLAYERS, Phase, Player, Purchasable, RESOURCES, State,
+    Action, PLAYERS,
+    Phase::{self, StealingFromPlayer},
+    Player, Purchasable, RESOURCES, ROLL_WEIGHTS, State,
     bundle::{BUY_COSTS, Bundle},
 };
 use Action::*;
@@ -20,7 +22,6 @@ const ROLL_ACTIONS: [Action; 11] = [
     Roll(11),
     Roll(12),
 ];
-const ROLL_WEIGHTS: [f64; 11] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
 
 impl GameState for State {
     type Action = Action;
@@ -64,14 +65,19 @@ impl GameState for State {
             }
             MoveRobber(hex_id) => {
                 self.board.move_robber(hex_id);
-                self.phase = if !self.get_steal_actions(hex_id).is_empty() {
-                    Phase::StealingResources(hex_id)
+                self.phase = if !self.get_hex_steal_actions(hex_id).is_empty() {
+                    Phase::StealingFromHex(hex_id)
                 } else {
                     Phase::Normal
                 }
             }
-            StealResource(target) => {
-                self.steal_resource(self.current_player(), target);
+            StealFrom(target) => {
+                self.phase = Phase::StealingFromPlayer(target);
+            }
+            StealResourceFrom(target, res) => {
+                self.player_resources[target][res] -= 1;
+                let player_bundle = &mut self.player_resources[player];
+                player_bundle[res] += 1;
                 self.phase = Phase::Normal;
             }
             DiscardResource(res) => {
@@ -129,7 +135,9 @@ impl GameState for State {
             }
             BuyDevCard => {
                 self.give_to_bank(player, BUY_COSTS[Purchasable::DevCard]);
-                let card = self.bank.draw_random_dev_card();
+                self.phase = Phase::BuyingDevCard;
+            }
+            ReceiveDevCard(card) => {
                 // You can only play one dev card per turn.
                 // This means that we don't need to track how many cards of each type are locked.
                 if self.dev_cards[player][card] == 0 {
@@ -162,22 +170,29 @@ impl GameState for State {
             return (vec![], None);
         }
 
+        use Phase::*;
         let actions = match self.phase {
-            Phase::Rolling => return (Vec::from(ROLL_ACTIONS), Some(Vec::from(ROLL_WEIGHTS))),
-            Phase::Normal => self.get_normal_actions(player),
-            Phase::Setup => todo!(),
-            Phase::StealingResources(hex_id) => self.get_steal_actions(hex_id),
-            Phase::Discarding(_) => self.get_discard_actions(self.current_player()),
-            Phase::MovingRobber => self.get_robber_actions(),
-            Phase::RoadBuilding(remaining) => self.get_road_building_actions(player, remaining),
-            Phase::YearOfPlenty(_) => self.get_year_of_plenty_actions(),
-            Phase::Monopoly => RESOURCES.into_iter().map(|r| Monopolize(r)).collect(),
+            Rolling => return (Vec::from(ROLL_ACTIONS), Some(Vec::from(ROLL_WEIGHTS))),
+            StealingFromPlayer(p) => return self.get_player_steal_actions(p),
+            Normal => self.get_normal_actions(player),
+            Setup => todo!(),
+            StealingFromHex(hex_id) => self.get_hex_steal_actions(hex_id),
+            Discarding(_) => self.get_discard_actions(self.current_player()),
+            BuyingDevCard => return self.get_receive_dev_card_actions(),
+            MovingRobber => self.get_robber_actions(),
+            RoadBuilding(remaining) => self.get_road_building_actions(player, remaining),
+            YearOfPlenty(_) => self.get_year_of_plenty_actions(),
+            Monopoly => RESOURCES.into_iter().map(|r| Monopolize(r)).collect(),
         };
+        assert_ne!(actions.len(), 0);
         (actions, None)
     }
 
     fn is_random(&self) -> bool {
-        self.phase == Phase::Rolling
+        match self.phase {
+            Phase::Rolling | StealingFromPlayer(_) | Phase::BuyingDevCard => true,
+            _ => false,
+        }
     }
 
     fn is_terminal(&self) -> bool {

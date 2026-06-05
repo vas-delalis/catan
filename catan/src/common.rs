@@ -45,10 +45,12 @@ pub enum Action {
     UpgradeSettlement(VertexId),
     BuildRoad(EdgeId),
     BuyDevCard,
+    ReceiveDevCard(DevCard),
     PlayDevCard(DevCard),
     MoveRobber(HexId),
     DiscardResource(Resource),
-    StealResource(Player),
+    StealFrom(Player),
+    StealResourceFrom(Player, Resource),
     Monopolize(Resource),
     TakeFreeResource(Resource),
     ExchangeResources(((Resource, u8), Resource)),
@@ -57,28 +59,31 @@ pub enum Action {
 
 impl From<usize> for Action {
     fn from(n: usize) -> Self {
+        use Action::*;
         let b0 = n & 0xFF;
         let b1 = (n >> 8) & 0xFF;
         let b2 = (n >> 16) & 0xFF;
         let b3 = (n >> 24) & 0xFF;
         match b0 {
-            0 => Action::RollDice,
-            1 => Action::Roll(b1 as u8),
-            2 => Action::BuildSettlement(b1),
-            3 => Action::UpgradeSettlement(b1),
-            4 => Action::BuildRoad(b1),
-            5 => Action::BuyDevCard,
-            6 => Action::PlayDevCard(DevCard::from_usize(b1)),
-            7 => Action::MoveRobber(b1),
-            8 => Action::DiscardResource(Resource::from_usize(b1)),
-            9 => Action::StealResource(Player::from_usize(b1)),
-            10 => Action::Monopolize(Resource::from_usize(b1)),
-            11 => Action::TakeFreeResource(Resource::from_usize(b1)),
-            12 => Action::ExchangeResources((
+            0 => RollDice,
+            1 => Roll(b1 as u8),
+            2 => BuildSettlement(b1),
+            3 => UpgradeSettlement(b1),
+            4 => BuildRoad(b1),
+            5 => BuyDevCard,
+            6 => ReceiveDevCard(DevCard::from_usize(b1)),
+            7 => PlayDevCard(DevCard::from_usize(b1)),
+            8 => MoveRobber(b1),
+            9 => DiscardResource(Resource::from_usize(b1)),
+            10 => StealFrom(Player::from_usize(b1)),
+            11 => StealResourceFrom(Player::from_usize(b1), Resource::from_usize(b2)),
+            12 => Monopolize(Resource::from_usize(b1)),
+            13 => TakeFreeResource(Resource::from_usize(b1)),
+            14 => ExchangeResources((
                 (Resource::from_usize(b1), b2 as u8),
                 Resource::from_usize(b3),
             )),
-            13 => Action::EndTurn,
+            15 => Action::EndTurn,
             _ => panic!("invalid action index {n}"),
         }
     }
@@ -86,23 +91,26 @@ impl From<usize> for Action {
 
 impl From<Action> for usize {
     fn from(value: Action) -> Self {
+        use Action::*;
         match value {
-            Action::RollDice => 0,
-            Action::Roll(v) => 1 | ((v as usize) << 8),
-            Action::BuildSettlement(v) => 2 | (v << 8),
-            Action::UpgradeSettlement(v) => 3 | (v << 8),
-            Action::BuildRoad(e) => 4 | (e << 8),
-            Action::BuyDevCard => 5,
-            Action::PlayDevCard(d) => 6 | (d.into_usize() << 8),
-            Action::MoveRobber(h) => 7 | (h << 8),
-            Action::DiscardResource(r) => 8 | (r.into_usize() << 8),
-            Action::StealResource(p) => 9 | (p.into_usize() << 8),
-            Action::Monopolize(r) => 10 | (r.into_usize() << 8),
-            Action::TakeFreeResource(r) => 11 | (r.into_usize() << 8),
-            Action::ExchangeResources(((from_r, qty), to_r)) => {
-                12 | (from_r.into_usize() << 8) | ((qty as usize) << 16) | (to_r.into_usize() << 24)
+            RollDice => 0,
+            Roll(v) => 1 | ((v as usize) << 8),
+            BuildSettlement(v) => 2 | (v << 8),
+            UpgradeSettlement(v) => 3 | (v << 8),
+            BuildRoad(e) => 4 | (e << 8),
+            BuyDevCard => 5,
+            ReceiveDevCard(d) => 6 | (d.into_usize() << 8),
+            PlayDevCard(d) => 7 | (d.into_usize() << 8),
+            MoveRobber(h) => 8 | (h << 8),
+            DiscardResource(r) => 9 | (r.into_usize() << 8),
+            StealFrom(p) => 10 | (p.into_usize() << 8),
+            StealResourceFrom(p, r) => 11 | (p.into_usize() << 8) | (r.into_usize() << 16),
+            Monopolize(r) => 12 | (r.into_usize() << 8),
+            TakeFreeResource(r) => 13 | (r.into_usize() << 8),
+            ExchangeResources(((from_r, qty), to_r)) => {
+                14 | (from_r.into_usize() << 8) | ((qty as usize) << 16) | (to_r.into_usize() << 24)
             }
-            Action::EndTurn => 13,
+            Action::EndTurn => 15,
         }
     }
 }
@@ -216,6 +224,8 @@ pub struct HiddenHand {
     pub dev_cards: u8,
 }
 
+pub const ROLL_WEIGHTS: [f64; 11] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,7 +258,12 @@ mod tests {
             actions.push(DiscardResource(r));
         }
         for p in PLAYERS {
-            actions.push(StealResource(p));
+            actions.push(StealFrom(p));
+        }
+        for p in PLAYERS {
+            for r in RESOURCES {
+                actions.push(StealResourceFrom(p, r));
+            }
         }
         for r in RESOURCES {
             actions.push(Monopolize(r));

@@ -4,13 +4,12 @@ use std::{
 };
 
 use common::GameState;
-use rand::distr::weighted::WeightedIndex;
 
 use crate::bundle::BUY_COSTS;
 
 use {
     crate::Action::*, crate::bank::Bank, crate::board::*, crate::bundle::Bundle, crate::common::*,
-    enum_map::EnumMap, rand::prelude::*,
+    enum_map::EnumMap,
 };
 
 mod display;
@@ -41,7 +40,9 @@ pub enum Phase {
     Setup, // Each player's second settlement produces resources at the end of setup
     Discarding(Bundle), // Remaining cards to discard per player
     MovingRobber,
-    StealingResources(HexId),
+    StealingFromHex(HexId),
+    StealingFromPlayer(Player),
+    BuyingDevCard,
     RoadBuilding(u8), // Remaining roads to build
     YearOfPlenty(u8), // Remaining resource units to take
     Monopoly,
@@ -217,13 +218,27 @@ impl State {
             .collect()
     }
 
-    fn get_steal_actions(&self, hex_id: HexId) -> Vec<Action> {
+    fn get_hex_steal_actions(&self, hex_id: HexId) -> Vec<Action> {
         self.board
             .players_on_hex(hex_id)
             .into_iter()
-            .filter(|&p| p != self.current_player())
-            .map(|p| StealResource(p))
+            .filter(|&p| p != self.current_player() && self.player_resources[p].count_nonzero() > 0)
+            .map(|p| StealFrom(p))
             .collect()
+    }
+
+    /// Precondition: target has at least one resource card.
+    fn get_player_steal_actions(&self, target: Player) -> (Vec<Action>, Option<Vec<f64>>) {
+        let counts = &self.player_resources[target].data[..5];
+        let mut actions = vec![];
+        let mut weights = vec![];
+        for i in 0..5 {
+            if counts[i] > 0 {
+                actions.push(StealResourceFrom(target, RESOURCES[i]));
+                weights.push(counts[i] as f64);
+            }
+        }
+        (actions, Some(weights))
     }
 
     fn get_discard_actions(&self, player: Player) -> Vec<Action> {
@@ -253,6 +268,19 @@ impl State {
             }
         }
         actions
+    }
+
+    fn get_receive_dev_card_actions(&self) -> (Vec<Action>, Option<Vec<f64>>) {
+        let counts = self.bank.dev_card_weights();
+        let mut actions = vec![];
+        let mut weights = vec![];
+        for i in 0..5 {
+            if counts[i] > 0.0 {
+                actions.push(ReceiveDevCard(DEV_CARDS[i]));
+                weights.push(counts[i] as f64);
+            }
+        }
+        (actions, Some(weights))
     }
 
     fn get_road_building_actions(&self, player: Player, remaining: u8) -> Vec<Action> {
@@ -339,27 +367,6 @@ impl State {
         }
     }
 
-    /// Takes random resource unit from `target`, gives it to `player`,
-    /// and returns the resource type (or `None` if target had nothing to steal).
-    fn steal_resource(&mut self, player: Player, target: Player) -> Option<Resource> {
-        assert_ne!(player, target);
-        let target_bundle = &mut self.player_resources[target];
-
-        if target_bundle.count_nonzero() == 0 {
-            return None;
-        }
-
-        let arr = target_bundle.data.as_array();
-        let index = WeightedIndex::new(&arr[..5]).unwrap();
-        let mut rng = rand::rng();
-
-        let res = RESOURCES[index.sample(&mut rng)];
-        target_bundle[res] -= 1;
-        let player_bundle = &mut self.player_resources[player];
-        player_bundle[res] += 1;
-        Some(res)
-    }
-
     /// Carries out the effects of a given dice roll.
     ///
     /// If the roll is a 7: handles resource discarding, moving the robber, etc.
@@ -438,8 +445,8 @@ mod tests {
 
         let actions = s.get_actions(s.current_player()).0;
         assert_eq!(actions.len(), 2);
-        assert!(actions.contains(&StealResource(Red)));
-        assert!(actions.contains(&StealResource(White)));
+        assert!(actions.contains(&StealFrom(Red)));
+        assert!(actions.contains(&StealFrom(White)));
     }
 
     #[test]
@@ -454,7 +461,7 @@ mod tests {
 
         let actions = s.get_actions(s.current_player()).0;
         // No steal actions
-        assert!(!actions.into_iter().any(|a| matches!(a, StealResource(_))));
+        assert!(!actions.into_iter().any(|a| matches!(a, StealFrom(_))));
     }
 
     #[test]
@@ -467,7 +474,7 @@ mod tests {
         s.apply_action(MoveRobber(s.board.hex_id(Hex(0, 2))));
         let actions = s.get_actions(s.current_player()).0;
         // No steal actions
-        assert!(!actions.into_iter().any(|a| matches!(a, StealResource(_))));
+        assert!(!actions.into_iter().any(|a| matches!(a, StealFrom(_))));
     }
 
     #[test]
@@ -481,7 +488,7 @@ mod tests {
         let actions = s.get_actions(s.current_player()).0;
         // Can only steal from Orange
         assert_eq!(actions.len(), 1);
-        assert_eq!(actions[0], StealResource(Orange));
+        assert_eq!(actions[0], StealFrom(Orange));
     }
 
     #[test]
@@ -495,7 +502,7 @@ mod tests {
         s.apply_action(MoveRobber(4));
 
         // Blue steals from red
-        s.apply_action(StealResource(Red));
+        s.apply_action(StealFrom(Red));
 
         // Blue gains 1, red loses 1. Stolen resource is Brick or Grain, since that's all red had.
         assert_eq!(
@@ -795,5 +802,17 @@ mod tests {
 
         let actions = s.get_actions(s.current_player()).0;
         assert!(!actions.iter().any(|a| matches!(a, PlayDevCard(_))));
+    }
+
+    #[test]
+    fn deep_clone() {
+        let mut s = State::default();
+        s.player_resources[Blue] = Bundle::splat(5);
+
+        let mut s2 = s.clone();
+
+        s2.player_resources[Blue] = Bundle::splat(10);
+
+        assert_ne!(s.player_resources[Blue], s2.player_resources[Blue]);
     }
 }
