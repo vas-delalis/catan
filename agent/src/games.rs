@@ -3,6 +3,7 @@ mod odds_game;
 mod pig;
 mod tic_tac_toe;
 
+pub use catan::State as Catan;
 pub use dots_and_boxes::{
     Dir as DotsAndBoxesDir, DotsAndBoxes, Edge as DotsAndBoxesAction, Player as DotsAndBoxesPlayer,
     ScoreEvaluator,

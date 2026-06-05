@@ -20,6 +20,7 @@ macro_rules! with_game {
             "TicTacToe"    => { type $G = $crate::games::TicTacToe;    $($body)* }
             "OddsGame"     => { type $G = $crate::games::OddsGame;     $($body)* }
             "Pig"          => { type $G = $crate::games::Pig;          $($body)* }
+            "Catan"        => { type $G = $crate::games::Catan;        $($body)* }
             other => panic!("Unknown game: {other}"),
         }
     }
