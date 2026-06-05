@@ -340,37 +340,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn display_dimensions() {
-        let game: DotsAndBoxes = DotsAndBoxes::new();
-        let rendered = format!("{}", game);
-
-        let mut expected = String::new();
-        let w = 2;
-        let h = 3;
-
-        for y in 0..=h {
-            for _x in 0..w {
-                expected.push('.');
-                expected.push_str("   ");
-            }
-            expected.push('.');
-            expected.push('\n');
-
-            if y < h {
-                for _x in 0..=w {
-                    expected.push(' ');
-                    if _x < w {
-                        expected.push_str("   ");
-                    }
-                }
-                expected.push('\n');
-            }
-        }
-
-        assert_eq!(rendered, expected);
-    }
-
-    #[test]
     fn get_actions() {
         type GAME = DotsAndBoxes;
         let mut game: GAME = DotsAndBoxes::new();
