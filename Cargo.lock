@@ -260,6 +260,7 @@ dependencies = [
  "rkyv",
  "rkyv_util",
  "serde",
+ "tch",
  "tokio",
  "tower",
  "tower-http",

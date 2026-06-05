@@ -16,6 +16,7 @@ serde = { version = "1.0.217", features = ["derive"] }
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["cors"] }
+tch = "0.22.0"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

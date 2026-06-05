@@ -316,6 +316,18 @@ impl Board {
         buildings.count_ones() + (buildings & self.cities).count_ones()
         // TODO: longest road
     }
+
+    pub fn production(&self, player: Player) -> Vec<f32> {
+        let mut production = vec![0.0f32; 5];
+        let in_stock = Bundle::splat(20);
+        for roll in 2..=12 {
+            for res in RESOURCES {
+                let amount = self.produce_resources(roll, in_stock)[player][res] as f32;
+                production[res as usize] += amount * ROLL_WEIGHTS[roll as usize - 2] as f32 / 36.0
+            }
+        }
+        production
+    }
 }
 
 #[cfg(test)]
