@@ -229,12 +229,11 @@ impl Board {
             if enemy_buildings.count_ones() == 1 {
                 let building = enemy_buildings.next().unwrap();
                 let building_edges = ADJACENCY.vert_to_edges[building];
-                if let Some(edge_in_question) = (building_edges & !self.road_slots).next() {
-                    if (ADJACENCY.edge_to_edges[edge_in_question] & self.player_roads[player])
-                        .count_ones()
+                for candidate in building_edges & self.road_slots {
+                    if (ADJACENCY.edge_to_edges[candidate] & self.player_roads[player]).count_ones()
                         == 1
                     {
-                        self.player_road_slots[player] &= !ADJACENCY.vert_to_edges[building];
+                        self.player_road_slots[player] &= !Bitboard::single(candidate);
                     }
                 }
                 break;
@@ -670,6 +669,23 @@ mod tests {
 
         b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+    }
+
+    #[test]
+    fn old_enemy_settlement_allows_road_that_goes_around3() {
+        let mut b = Board::default();
+        b.add_settlement(Orange, b.vertex_id(Vertex(-2, 3, N)));
+        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
+        b.add_road(Blue, b.edge_id(Edge(-2, 2, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-2, 2, W)));
+        b.add_road(Blue, b.edge_id(Edge(-3, 3, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 3, NE)));
+
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(-1, 2, W))));
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(-2, 3, NW))));
+
+        b.add_road(Blue, b.edge_id(Edge(-1, 2, W)));
+        assert!(b.available_roads(Blue).contains(b.edge_id(Edge(-2, 3, NW))));
     }
 
     #[test]
