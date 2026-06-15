@@ -1,17 +1,12 @@
-use std::{
-    cmp::min,
-    simd::{cmp::SimdPartialOrd, num::SimdUint},
-};
+use std::{cmp::min, simd::num::SimdUint};
 
 use common::GameState;
 
-use crate::bundle::BUY_COSTS;
-
 use {
-    crate::Action::*, crate::bank::Bank, crate::board::*, crate::bundle::Bundle, crate::common::*,
-    enum_map::EnumMap,
+    crate::bank::Bank, crate::board::*, crate::bundle::Bundle, crate::common::*, enum_map::EnumMap,
 };
 
+mod action_generation;
 mod display;
 mod game_state;
 mod image;
@@ -159,173 +154,6 @@ impl State {
         self.player_resources[player] -= bundle;
     }
 
-    // === Action generation ===
-
-    fn get_normal_actions(&self, player: Player) -> Vec<Action> {
-        let mut actions = vec![EndTurn];
-        let resources = &self.player_resources[player];
-
-        // BuyDevCard, BuildSettlement, UpgradeSettlement, BuildRoad
-        for (item, cost) in BUY_COSTS.iter() {
-            if self.bank.purchasable_count(player, item) > 0
-                && cost.data.simd_le(self.bank.resources.data).all()
-                && cost.data.simd_le(resources.data).all()
-            {
-                match item {
-                    Purchasable::DevCard => actions.push(BuyDevCard),
-                    Purchasable::Settlement => {
-                        let slots = self.board.available_settlements(player);
-                        actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
-                    }
-                    Purchasable::City => {
-                        let settlements = self.board.settlements(player);
-                        actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
-                    }
-                    Purchasable::Road => {
-                        let slots = self.board.available_roads(player);
-                        actions.extend(slots.map(|edge_id| BuildRoad(edge_id)));
-                    }
-                }
-            }
-        }
-
-        // PlayDevCard
-        if !self.has_played_dev_card {
-            use DevCard::*;
-
-            actions.extend(
-                [Knight, Monopoly, RoadBuilding, YearOfPlenty]
-                    .into_iter()
-                    .filter_map(|card| {
-                        if self.dev_cards[player][card] > 0 && !self.locked_dev_cards[card] {
-                            Some(PlayDevCard(card))
-                        } else {
-                            None
-                        }
-                    }),
-            );
-        }
-
-        // ExchangeResource (maritime trade)
-        actions.append(&mut self.get_exchange_actions(player));
-        actions
-    }
-
-    fn get_robber_actions(&self) -> Vec<Action> {
-        (0..N_HEXES)
-            .filter(|&id| id != self.board.robber_hex_id())
-            .map(|id| MoveRobber(id))
-            .collect()
-    }
-
-    fn get_hex_steal_actions(&self, hex_id: HexId) -> Vec<Action> {
-        self.board
-            .players_on_hex(hex_id)
-            .into_iter()
-            .filter(|&p| p != self.current_player() && self.player_resources[p].count_nonzero() > 0)
-            .map(|p| StealFrom(p))
-            .collect()
-    }
-
-    /// Precondition: target has at least one resource card.
-    fn get_player_steal_actions(&self, target: Player) -> (Vec<Action>, Option<Vec<f64>>) {
-        let counts = &self.player_resources[target].data[..5];
-        let mut actions = vec![];
-        let mut weights = vec![];
-        for i in 0..5 {
-            if counts[i] > 0 {
-                actions.push(StealResourceFrom(target, RESOURCES[i]));
-                weights.push(counts[i] as f64);
-            }
-        }
-        (actions, Some(weights))
-    }
-
-    fn get_discard_actions(&self, player: Player) -> Vec<Action> {
-        RESOURCES
-            .into_iter()
-            .filter(|&r| self.player_resources[player][r] > 0)
-            .map(|r| DiscardResource(r))
-            .collect()
-    }
-
-    /// Returns possible actions for exchanging resources (maritime trade).
-    fn get_exchange_actions(&self, player: Player) -> Vec<Action> {
-        let mut actions = vec![];
-        let ratios = self.board.exchange_ratios(player);
-
-        for res1 in RESOURCES {
-            // Check if player has enough of res1
-            if self.player_resources[player][res1] < ratios[res1] {
-                continue;
-            }
-            for res2 in RESOURCES {
-                // Prevent nonsensical trades and ensure bank has enough of res2 in stock
-                if res1 == res2 || self.bank.resources[res2] == 0 {
-                    continue;
-                }
-                actions.push(ExchangeResources(((res1, ratios[res1]), res2)));
-            }
-        }
-        actions
-    }
-
-    fn get_receive_dev_card_actions(&self) -> (Vec<Action>, Option<Vec<f64>>) {
-        let counts = self.bank.dev_card_weights();
-        let mut actions = vec![];
-        let mut weights = vec![];
-        for i in 0..5 {
-            if counts[i] > 0.0 {
-                actions.push(ReceiveDevCard(DEV_CARDS[i]));
-                weights.push(counts[i] as f64);
-            }
-        }
-        (actions, Some(weights))
-    }
-
-    fn get_road_building_actions(&self, player: Player, remaining: u8) -> Vec<Action> {
-        let slots = self.board.available_roads(player);
-        // dbg!(player);
-        // dbg!(self.board.available_roads(player));
-        // dbg!(PLAYERS
-        //     .into_iter()
-        //     .flat_map(|p| {
-        //         let settlements = self
-        //             .board
-        //             .settlements(p)
-        //             .map(move |v| (p, self.board.vertex(v), false));
-        //         let cities = self
-        //             .board
-        //             .cities(p)
-        //             .map(move |v| (p, self.board.vertex(v), true));
-        //         settlements.chain(cities)
-        //     })
-        //     .collect::<Vec<(Player, Vertex, bool)>>());
-        // dbg!(PLAYERS
-        //     .into_iter()
-        //     .flat_map(|p| self.board.roads(p).map(move |e| (p, self.board.edge(e))))
-        //     .collect::<Vec<(Player, Edge)>>());
-        assert!(slots.count_ones() > 0);
-
-        slots
-            .take(remaining as usize)
-            .map(|edge_id| BuildRoad(edge_id))
-            .collect()
-    }
-
-    fn get_year_of_plenty_actions(&self) -> Vec<Action> {
-        RESOURCES
-            .into_iter()
-            .filter_map(|res| {
-                if self.bank.resources[res] > 0 {
-                    Some(TakeFreeResource(res))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     // === Action execution/application ===
 
     fn activate_dev_card(&mut self, card: DevCard) {
@@ -402,6 +230,7 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+    use crate::Action::*;
     use crate::bundle::BUY_COSTS;
     use std::assert_matches;
 

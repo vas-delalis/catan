@@ -4,24 +4,9 @@ use enum_map::EnumMap;
 use crate::{
     Action, PLAYERS,
     Phase::{self, StealingFromPlayer},
-    Player, Purchasable, RESOURCES, ROLL_WEIGHTS, State,
+    Player, Purchasable, State,
     bundle::{BUY_COSTS, Bundle},
 };
-use Action::*;
-
-const ROLL_ACTIONS: [Action; 11] = [
-    Roll(2),
-    Roll(3),
-    Roll(4),
-    Roll(5),
-    Roll(6),
-    Roll(7),
-    Roll(8),
-    Roll(9),
-    Roll(10),
-    Roll(11),
-    Roll(12),
-];
 
 impl GameState for State {
     type Action = Action;
@@ -143,7 +128,9 @@ impl GameState for State {
                 if self.dev_cards[player][card] == 0 {
                     self.locked_dev_cards[card] = true;
                 }
+                self.bank.take_dev_card(card);
                 self.dev_cards[player][card] += 1;
+                self.phase = Phase::Normal;
             }
             EndTurn => {
                 self.whose_turn = self.turn_order[(self.whose_turn as usize + 1) % 4];
@@ -172,17 +159,17 @@ impl GameState for State {
 
         use Phase::*;
         let actions = match self.phase {
-            Rolling => return (Vec::from(ROLL_ACTIONS), Some(Vec::from(ROLL_WEIGHTS))),
-            StealingFromPlayer(p) => return self.get_player_steal_actions(p),
-            Normal => self.get_normal_actions(player),
-            Setup => todo!(),
-            StealingFromHex(hex_id) => self.get_hex_steal_actions(hex_id),
-            Discarding(_) => self.get_discard_actions(self.current_player()),
+            Rolling => return self.get_roll_actions(),
             BuyingDevCard => return self.get_receive_dev_card_actions(),
+            StealingFromPlayer(p) => return self.get_player_steal_actions(p),
+            Setup => todo!(),
+            Monopoly => self.get_monopoly_actions(),
+            Normal => self.get_normal_actions(player),
             MovingRobber => self.get_robber_actions(),
-            RoadBuilding(remaining) => self.get_road_building_actions(player, remaining),
             YearOfPlenty(_) => self.get_year_of_plenty_actions(),
-            Monopoly => RESOURCES.into_iter().map(|r| Monopolize(r)).collect(),
+            Discarding(_) => self.get_discard_actions(self.current_player()),
+            StealingFromHex(hex_id) => self.get_hex_steal_actions(hex_id),
+            RoadBuilding(remaining) => self.get_road_building_actions(player, remaining),
         };
         assert_ne!(actions.len(), 0);
         (actions, None)
