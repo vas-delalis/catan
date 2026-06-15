@@ -6,6 +6,7 @@ use {
     crate::bank::Bank, crate::board::*, crate::bundle::Bundle, crate::common::*, enum_map::EnumMap,
 };
 
+mod action_execution;
 mod action_generation;
 mod display;
 mod game_state;
