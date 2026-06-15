@@ -180,7 +180,7 @@ pub const DEV_CARDS: [DevCard; 5] = [
     DevCard::VictoryPoint,
     DevCard::RoadBuilding,
     DevCard::YearOfPlenty,
-    DevCard::VictoryPoint,
+    DevCard::Monopoly,
 ];
 
 #[derive(Serialize)]
