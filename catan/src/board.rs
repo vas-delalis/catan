@@ -24,8 +24,7 @@ pub struct Board {
     settlement_slots: Bitboard<V>,
     road_slots: Bitboard<E>,
     cities: Bitboard<V>,
-    robber_verts: Bitboard<V>, // 8 bytes to store 6 vertices? Or only store hex id but have to do a hex-to-vert lookup at runtime?
-    robber: HexId,             // ...might have to store robber hex id anyway
+    robber: HexId,
     longest_roads: EnumMap<Player, u8>,
 }
 
@@ -40,7 +39,6 @@ impl Clone for Board {
             settlement_slots: self.settlement_slots.clone(),
             road_slots: self.road_slots.clone(),
             cities: self.cities.clone(),
-            robber_verts: self.robber_verts.clone(),
             robber: self.robber.clone(),
             longest_roads: self.longest_roads.clone(),
         }
@@ -90,7 +88,6 @@ impl Board {
             settlement_slots: Bitboard::ones(),
             road_slots: Bitboard::ones(),
             cities: Bitboard::zeros(),
-            robber_verts: ADJACENCY.hex_to_verts[center_hex_id],
             robber: center_hex_id,
             shared_data: Arc::new(shared_data),
             longest_roads: EnumMap::default(),
@@ -230,6 +227,7 @@ impl Board {
                 let building = enemy_buildings.next().unwrap();
                 let building_edges = ADJACENCY.vert_to_edges[building];
                 for candidate in building_edges & self.road_slots {
+                    // No alternate path to the candidate
                     if (ADJACENCY.edge_to_edges[candidate] & self.player_roads[player]).count_ones()
                         == 1
                     {
@@ -252,7 +250,6 @@ impl Board {
 
     pub fn move_robber(&mut self, hex_id: HexId) {
         self.robber = hex_id;
-        self.robber_verts = ADJACENCY.hex_to_verts[hex_id];
     }
 
     /// Returns the amount of each resource needed to trade with the bank (maritime trade).
@@ -281,7 +278,7 @@ impl Board {
 
         for res in RESOURCES {
             let mut resource_verts = self.roll_resource_vertices(roll, res);
-            resource_verts &= !self.robber_verts;
+            resource_verts &= !ADJACENCY.hex_to_verts[self.robber_hex_id()];
             let mut bundle = Bundle::default();
 
             for (player, buildings) in self.player_buildings {
