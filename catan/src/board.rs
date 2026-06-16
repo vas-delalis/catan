@@ -407,7 +407,7 @@ mod tests {
         }
     }
 
-    fn add_roads_from_hex(board: &mut Board, player: Player, hex: &str) {
+    fn roads_from_hex(board: &mut Board, player: Player, hex: &str) {
         let edges: Bitboard<E> = Bitboard::from_hex(hex);
         for e in edges {
             board.add_road(player, e);
@@ -651,7 +651,7 @@ mod tests {
     #[test]
     fn enemy_settlement_splits_road() {
         let mut b = Board::default();
-        add_roads_from_hex(&mut b, Blue, "18001800000000");
+        roads_from_hex(&mut b, Blue, "18001800000000");
         assert_eq!(b.longest_roads[Blue], 4, "longest road before split");
 
         add_settlements_from_hex(&mut b, Orange, "400000");
@@ -661,8 +661,8 @@ mod tests {
     #[test]
     fn old_enemy_settlement_prevents_new_road() {
         let mut b = Board::default();
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        sett(&mut b, Orange, Vertex(0, 0, N));
+        road(&mut b, Blue, Edge(0, 0, NW));
 
         assert!(!b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NE))));
     }
@@ -670,8 +670,8 @@ mod tests {
     #[test]
     fn new_enemy_settlement_prevents_new_road() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+        road(&mut b, Blue, Edge(0, 0, NW));
+        sett(&mut b, Orange, Vertex(0, 0, N));
 
         assert!(!b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NE))));
     }
@@ -679,12 +679,12 @@ mod tests {
     #[test]
     fn old_enemy_settlement_allows_road_that_goes_around() {
         let mut b = Board::default();
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+        sett(&mut b, Orange, Vertex(0, 0, N));
+        road(&mut b, Blue, Edge(0, 0, NW));
+        road(&mut b, Blue, Edge(-1, 0, NE));
+        road(&mut b, Blue, Edge(0, -1, W));
+        road(&mut b, Blue, Edge(0, -1, NW));
+        road(&mut b, Blue, Edge(0, -1, NE));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
     }
@@ -692,13 +692,13 @@ mod tests {
     #[test]
     fn new_enemy_settlement_allows_road_that_goes_around() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+        road(&mut b, Blue, Edge(0, 0, NW));
+        road(&mut b, Blue, Edge(-1, 0, NE));
+        road(&mut b, Blue, Edge(0, -1, W));
+        road(&mut b, Blue, Edge(0, -1, NW));
+        road(&mut b, Blue, Edge(0, -1, NE));
 
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+        sett(&mut b, Orange, Vertex(0, 0, N));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
     }
@@ -706,53 +706,53 @@ mod tests {
     #[test]
     fn old_enemy_settlement_allows_road_that_goes_around2() {
         let mut b = Board::default();
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+        sett(&mut b, Orange, Vertex(0, 0, N));
+        road(&mut b, Blue, Edge(-1, 0, NE));
+        road(&mut b, Blue, Edge(0, -1, W));
+        road(&mut b, Blue, Edge(0, -1, NW));
+        road(&mut b, Blue, Edge(0, -1, NE));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NW))));
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
 
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        road(&mut b, Blue, Edge(0, 0, NW));
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
     }
 
     #[test]
     fn old_enemy_settlement_allows_road_that_goes_around3() {
         let mut b = Board::default();
-        b.add_settlement(Orange, b.vertex_id(Vertex(-2, 3, N)));
-        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
-        b.add_road(Blue, b.edge_id(Edge(-2, 2, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-2, 2, W)));
-        b.add_road(Blue, b.edge_id(Edge(-3, 3, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 3, NE)));
+        sett(&mut b, Orange, Vertex(-2, 3, N));
+        road(&mut b, Blue, Edge(-2, 2, NE));
+        road(&mut b, Blue, Edge(-2, 2, NW));
+        road(&mut b, Blue, Edge(-2, 2, W));
+        road(&mut b, Blue, Edge(-3, 3, NE));
+        road(&mut b, Orange, Edge(-2, 3, NE));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(-1, 2, W))));
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(-2, 3, NW))));
 
-        b.add_road(Blue, b.edge_id(Edge(-1, 2, W)));
+        road(&mut b, Blue, Edge(-1, 2, W));
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(-2, 3, NW))));
     }
 
     #[test]
     fn new_enemy_settlement_allows_road_that_goes_around2() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, W)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, -1, NE)));
+        road(&mut b, Blue, Edge(-1, 0, NE));
+        road(&mut b, Blue, Edge(0, -1, W));
+        road(&mut b, Blue, Edge(0, -1, NW));
+        road(&mut b, Blue, Edge(0, -1, NE));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NW))));
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
 
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+        sett(&mut b, Orange, Vertex(0, 0, N));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(0, 0, NW))));
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
 
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        road(&mut b, Blue, Edge(0, 0, NW));
 
         assert!(b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
     }
@@ -760,10 +760,10 @@ mod tests {
     #[test]
     fn enemy_settlement_prevents_road_branch() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+        road(&mut b, Blue, Edge(0, 0, NW));
+        road(&mut b, Blue, Edge(0, 0, NE));
 
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
+        sett(&mut b, Orange, Vertex(0, 0, N));
 
         assert!(!b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
     }
@@ -771,13 +771,13 @@ mod tests {
     #[test]
     fn first_5_length_road_awards_points() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
+        road(&mut b, Blue, Edge(0, 0, NW));
+        road(&mut b, Blue, Edge(0, 0, NE));
+        road(&mut b, Blue, Edge(0, 0, W));
+        road(&mut b, Blue, Edge(-1, 1, NW));
         let points_before = b.victory_points(Blue);
 
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+        road(&mut b, Blue, Edge(-1, 1, W));
 
         let points_after = b.victory_points(Blue);
         assert_eq!(points_before + 2, points_after);
@@ -786,19 +786,15 @@ mod tests {
     #[test]
     fn surpassing_road_length_leader_awards_points() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
+        roads_from_hex(&mut b, Blue, "1c00300800");
+        road(&mut b, Orange, Edge(-1, 0, NW));
+        road(&mut b, Orange, Edge(-1, 0, NE));
+        road(&mut b, Orange, Edge(-1, 0, W));
+        road(&mut b, Orange, Edge(-2, 1, NW));
+        road(&mut b, Orange, Edge(-2, 1, W));
         let points_before = b.victory_points(Orange);
 
-        b.add_road(Orange, b.edge_id(Edge(-3, 2, NE)));
+        road(&mut b, Orange, Edge(-3, 2, NE));
 
         let points_after = b.victory_points(Orange);
         assert_eq!(points_before + 2, points_after);
@@ -807,15 +803,11 @@ mod tests {
     #[test]
     fn longest_road_revoked_after_break_and_no_one_has_5() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+        roads_from_hex(&mut b, Blue, "1c00300800");
         let blue_before = b.victory_points(Blue);
         let orange_before = b.victory_points(Orange);
 
-        b.add_settlement(Orange, b.vertex_id(Vertex(-1, 1, N)));
+        sett(&mut b, Orange, Vertex(-1, 1, N));
 
         let blue_after = b.victory_points(Blue);
         let orange_after = b.victory_points(Orange);
@@ -826,27 +818,14 @@ mod tests {
     #[test]
     fn longest_road_revoked_after_break_creates_tie_and_leader_falls_behind() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
-        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
-        b.add_road(Red, b.edge_id(Edge(1, 0, NW)));
-        b.add_road(Red, b.edge_id(Edge(1, 0, NE)));
-        b.add_road(Red, b.edge_id(Edge(1, 0, W)));
-        b.add_road(Red, b.edge_id(Edge(0, 1, NW)));
-        b.add_road(Red, b.edge_id(Edge(0, 1, W)));
+        roads_from_hex(&mut b, Blue, "1c00300800");
+        roads_from_hex(&mut b, Orange, "e00c0");
+        roads_from_hex(&mut b, Red, "1c006000000000");
         let blue_before = b.victory_points(Blue);
         let orange_before = b.victory_points(Orange);
         let red_before = b.victory_points(Red);
 
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, -1, S))); // Split Blue's roads 4-2
+        sett(&mut b, Orange, Vertex(0, -1, S)); // Split Blue's roads 4-2
 
         let blue_after = b.victory_points(Blue);
         let orange_after = b.victory_points(Orange);
@@ -859,21 +838,12 @@ mod tests {
     #[test]
     fn leader_keeps_longest_road_after_break_creates_tie() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
-        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
+        roads_from_hex(&mut b, Blue, "1c00300800");
+        roads_from_hex(&mut b, Orange, "e00c0");
         let blue_before = b.victory_points(Blue);
         let orange_before = b.victory_points(Orange);
 
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N))); // Split Blue's roads 5-1
+        sett(&mut b, Orange, Vertex(0, 0, N)); // Split Blue's roads 5-1
 
         let blue_after = b.victory_points(Blue);
         let orange_after = b.victory_points(Orange);
@@ -884,33 +854,17 @@ mod tests {
     #[test]
     fn new_longest_road_challenger_respects_ongoing_tie() {
         let mut b = Board::default();
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
-        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
-        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
-        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
-        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
-        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
-        b.add_road(Red, b.edge_id(Edge(1, 0, NW)));
-        b.add_road(Red, b.edge_id(Edge(1, 0, NE)));
-        b.add_road(Red, b.edge_id(Edge(1, 0, W)));
-        b.add_road(Red, b.edge_id(Edge(0, 1, NW)));
-        b.add_road(Red, b.edge_id(Edge(0, 1, W)));
-        b.add_settlement(Orange, b.vertex_id(Vertex(0, -1, S))); // Split Blue's roads 4-2
-        b.add_road(White, b.edge_id(Edge(2, 0, NW)));
-        b.add_road(White, b.edge_id(Edge(2, 0, NE)));
-        b.add_road(White, b.edge_id(Edge(2, 0, W)));
-        b.add_road(White, b.edge_id(Edge(1, 1, NW)));
+        roads_from_hex(&mut b, Blue, "1c00300800");
+        roads_from_hex(&mut b, Orange, "e00c0");
+        roads_from_hex(&mut b, Red, "1c006000000000");
+        roads_from_hex(&mut b, White, "70040000000000000");
+        sett(&mut b, Orange, Vertex(0, -1, S)); // Split Blue's roads 4-2
         let blue_before = b.victory_points(Blue);
         let orange_before = b.victory_points(Orange);
         let red_before = b.victory_points(Red);
         let white_before = b.victory_points(White);
 
-        b.add_road(White, b.edge_id(Edge(1, 1, W)));
+        road(&mut b, White, Edge(1, 1, W));
 
         let blue_after = b.victory_points(Blue);
         let orange_after = b.victory_points(Orange);
