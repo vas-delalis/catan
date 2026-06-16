@@ -26,6 +26,7 @@ pub struct Board {
     cities: Bitboard<V>,
     robber: HexId,
     longest_roads: EnumMap<Player, u8>,
+    road_leader: Option<Player>,
 }
 
 impl Clone for Board {
@@ -41,6 +42,7 @@ impl Clone for Board {
             cities: self.cities.clone(),
             robber: self.robber.clone(),
             longest_roads: self.longest_roads.clone(),
+            road_leader: self.road_leader.clone(),
         }
     }
 }
@@ -91,6 +93,7 @@ impl Board {
             robber: center_hex_id,
             shared_data: Arc::new(shared_data),
             longest_roads: EnumMap::default(),
+            road_leader: None,
         }
     }
 
@@ -166,7 +169,7 @@ impl Board {
         self.player_roads[player]
     }
 
-    pub fn longest_road(&self, player: Player) -> u8 {
+    fn longest_player_road(&self, player: Player) -> u8 {
         let enemy_buildings = player
             .enemies()
             .iter()
@@ -174,6 +177,10 @@ impl Board {
             .reduce(|acc, e| acc | e)
             .unwrap();
         ROAD_TRAILS.longest_trail(self.roads(player), enemy_buildings)
+    }
+
+    fn longest_road(&self) -> u8 {
+        self.longest_roads.iter().map(|(_, &x)| x).max().unwrap()
     }
 
     pub fn add_settlement(&mut self, player: Player, vertex_id: VertexId) {
@@ -202,7 +209,33 @@ impl Board {
                 // Neighboring roads > 1 means
                 // `player` just split 'enemy`'s road, which means
                 // length must be recalculated
-                self.longest_roads[enemy] = self.longest_road(enemy);
+                let length = self.longest_player_road(enemy);
+                self.longest_roads[enemy] = length;
+
+                if self.road_leader.is_some_and(|leader| leader == enemy) {
+                    let max = self.longest_road();
+                    let new_leaders: Vec<Player> = self
+                        .longest_roads
+                        .iter()
+                        .filter(|(_, x)| **x == max)
+                        .map(|(p, _)| p)
+                        .collect();
+                    // "If your longest road is broken and you are
+                    // tied for longest road, you still keep the “Longest Road” card.
+                    // However, if you no longer have the longest road, but two or
+                    // more players tie for the new longest road, set the “Longest
+                    // Road” card aside. Do the same if no one has a 5+ segment road."
+                    if max < 5 {
+                        self.road_leader = None;
+                    } else if length < max {
+                        if new_leaders.len() == 1 {
+                            self.road_leader = Some(new_leaders[0]);
+                        } else {
+                            self.road_leader = None;
+                        }
+                    }
+                }
+
                 break; // This can only happen to one enemy at a time
             }
         }
@@ -220,6 +253,7 @@ impl Board {
         // Allow adjacent roads
         let edges = ADJACENCY.edge_to_edges[edge_id];
         self.player_road_slots[player] |= edges;
+
         // Disallow roads blocked by enemy settlements
         for enemy in player.enemies() {
             let mut enemy_buildings = verts & self.player_buildings[enemy];
@@ -237,7 +271,19 @@ impl Board {
                 break;
             }
         }
-        self.longest_roads[player] = self.longest_road(player);
+
+        let old_lead = self.longest_road();
+        let length = self.longest_player_road(player);
+        self.longest_roads[player] = length;
+
+        if self
+            .road_leader
+            .map_or(length >= 5 && length > old_lead, |leader| {
+                length > self.longest_roads[leader]
+            })
+        {
+            self.road_leader = Some(player);
+        }
     }
 
     pub fn upgrade_settlement(&mut self, vertex_id: VertexId) {
@@ -309,8 +355,13 @@ impl Board {
     /// Returns the victory points a player gets from buildings and the longest road marker.
     pub fn victory_points(&self, player: Player) -> u32 {
         let buildings = self.player_buildings[player];
-        buildings.count_ones() + (buildings & self.cities).count_ones()
-        // TODO: longest road
+        let longest_road = if self.road_leader.is_some_and(|leader| leader == player) {
+            2
+        } else {
+            0
+        };
+
+        buildings.count_ones() + (buildings & self.cities).count_ones() + longest_road
     }
 
     pub fn production(&self, player: Player) -> Vec<f32> {
@@ -715,5 +766,159 @@ mod tests {
         b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N)));
 
         assert!(!b.available_roads(Blue).contains(b.edge_id(Edge(1, -1, W))));
+    }
+
+    #[test]
+    fn first_5_length_road_awards_points() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
+        let points_before = b.victory_points(Blue);
+
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+
+        let points_after = b.victory_points(Blue);
+        assert_eq!(points_before + 2, points_after);
+    }
+
+    #[test]
+    fn surpassing_road_length_leader_awards_points() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
+        let points_before = b.victory_points(Orange);
+
+        b.add_road(Orange, b.edge_id(Edge(-3, 2, NE)));
+
+        let points_after = b.victory_points(Orange);
+        assert_eq!(points_before + 2, points_after);
+    }
+
+    #[test]
+    fn longest_road_revoked_after_break_and_no_one_has_5() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+        let blue_before = b.victory_points(Blue);
+        let orange_before = b.victory_points(Orange);
+
+        b.add_settlement(Orange, b.vertex_id(Vertex(-1, 1, N)));
+
+        let blue_after = b.victory_points(Blue);
+        let orange_after = b.victory_points(Orange);
+        assert_eq!(blue_before, blue_after + 2); // Blue lost 2
+        assert_eq!(orange_before + 1, orange_after); // Orange gained 1 (from settlement)
+    }
+
+    #[test]
+    fn longest_road_revoked_after_break_creates_tie_and_leader_falls_behind() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
+        b.add_road(Red, b.edge_id(Edge(1, 0, NW)));
+        b.add_road(Red, b.edge_id(Edge(1, 0, NE)));
+        b.add_road(Red, b.edge_id(Edge(1, 0, W)));
+        b.add_road(Red, b.edge_id(Edge(0, 1, NW)));
+        b.add_road(Red, b.edge_id(Edge(0, 1, W)));
+        let blue_before = b.victory_points(Blue);
+        let orange_before = b.victory_points(Orange);
+        let red_before = b.victory_points(Red);
+
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, -1, S))); // Split Blue's roads 4-2
+
+        let blue_after = b.victory_points(Blue);
+        let orange_after = b.victory_points(Orange);
+        let red_after = b.victory_points(Red);
+        assert_eq!(blue_before, blue_after + 2); // Blue loses 2
+        assert_eq!(orange_before + 1, orange_after); // Orange gained 1 (from settlement)
+        assert_eq!(red_before, red_after); // Red unchanged
+    }
+
+    #[test]
+    fn leader_keeps_longest_road_after_break_creates_tie() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
+        let blue_before = b.victory_points(Blue);
+        let orange_before = b.victory_points(Orange);
+
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, 0, N))); // Split Blue's roads 5-1
+
+        let blue_after = b.victory_points(Blue);
+        let orange_after = b.victory_points(Orange);
+        assert_eq!(blue_before, blue_after); // Blue unchanged
+        assert_eq!(orange_before + 1, orange_after); // Orange gained 1 (from settlement)
+    }
+
+    #[test]
+    fn new_longest_road_challenger_respects_ongoing_tie() {
+        let mut b = Board::default();
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NW)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, NE)));
+        b.add_road(Blue, b.edge_id(Edge(0, 0, W)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, NW)));
+        b.add_road(Blue, b.edge_id(Edge(-1, 1, W)));
+        b.add_road(Blue, b.edge_id(Edge(-2, 2, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, NE)));
+        b.add_road(Orange, b.edge_id(Edge(-1, 0, W)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, NW)));
+        b.add_road(Orange, b.edge_id(Edge(-2, 1, W)));
+        b.add_road(Red, b.edge_id(Edge(1, 0, NW)));
+        b.add_road(Red, b.edge_id(Edge(1, 0, NE)));
+        b.add_road(Red, b.edge_id(Edge(1, 0, W)));
+        b.add_road(Red, b.edge_id(Edge(0, 1, NW)));
+        b.add_road(Red, b.edge_id(Edge(0, 1, W)));
+        b.add_settlement(Orange, b.vertex_id(Vertex(0, -1, S))); // Split Blue's roads 4-2
+        b.add_road(White, b.edge_id(Edge(2, 0, NW)));
+        b.add_road(White, b.edge_id(Edge(2, 0, NE)));
+        b.add_road(White, b.edge_id(Edge(2, 0, W)));
+        b.add_road(White, b.edge_id(Edge(1, 1, NW)));
+        let blue_before = b.victory_points(Blue);
+        let orange_before = b.victory_points(Orange);
+        let red_before = b.victory_points(Red);
+        let white_before = b.victory_points(White);
+
+        b.add_road(White, b.edge_id(Edge(1, 1, W)));
+
+        let blue_after = b.victory_points(Blue);
+        let orange_after = b.victory_points(Orange);
+        let red_after = b.victory_points(Red);
+        let white_after = b.victory_points(White);
+        assert_eq!(blue_before, blue_after); // Blue unchanged
+        assert_eq!(orange_before, orange_after); // Orange unchanged
+        assert_eq!(red_before, red_after); // Red unchanged
+        assert_eq!(white_before, white_after); // White unchanged
     }
 }
