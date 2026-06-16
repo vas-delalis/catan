@@ -26,8 +26,7 @@ impl State {
                         actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
                     }
                     Purchasable::Road => {
-                        let slots = self.board.available_roads(player);
-                        actions.extend(slots.map(|edge_id| BuildRoad(edge_id)));
+                        actions.extend(self.get_build_road_actions(player));
                     }
                 }
             }
@@ -130,34 +129,9 @@ impl State {
         (actions, Some(weights))
     }
 
-    pub(super) fn get_road_building_actions(&self, player: Player, remaining: u8) -> Vec<Action> {
+    pub(super) fn get_build_road_actions(&self, player: Player) -> Vec<Action> {
         let slots = self.board.available_roads(player);
-        // dbg!(player);
-        // dbg!(self.board.available_roads(player));
-        // dbg!(PLAYERS
-        //     .into_iter()
-        //     .flat_map(|p| {
-        //         let settlements = self
-        //             .board
-        //             .settlements(p)
-        //             .map(move |v| (p, self.board.vertex(v), false));
-        //         let cities = self
-        //             .board
-        //             .cities(p)
-        //             .map(move |v| (p, self.board.vertex(v), true));
-        //         settlements.chain(cities)
-        //     })
-        //     .collect::<Vec<(Player, Vertex, bool)>>());
-        // dbg!(PLAYERS
-        //     .into_iter()
-        //     .flat_map(|p| self.board.roads(p).map(move |e| (p, self.board.edge(e))))
-        //     .collect::<Vec<(Player, Edge)>>());
-        assert!(slots.count_ones() > 0);
-
-        slots
-            .take(remaining as usize)
-            .map(|edge_id| BuildRoad(edge_id))
-            .collect()
+        slots.map(|edge_id| BuildRoad(edge_id)).collect()
     }
 
     pub(super) fn get_year_of_plenty_actions(&self) -> Vec<Action> {
