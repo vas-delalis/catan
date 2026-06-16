@@ -355,12 +355,7 @@ impl Board {
     /// Returns the victory points a player gets from buildings and the longest road marker.
     pub fn victory_points(&self, player: Player) -> u32 {
         let buildings = self.player_buildings[player];
-        let longest_road = if self.road_leader.is_some_and(|leader| leader == player) {
-            2
-        } else {
-            0
-        };
-
+        let longest_road = 2 * self.road_leader.is_some_and(|leader| leader == player) as u32;
         buildings.count_ones() + (buildings & self.cities).count_ones() + longest_road
     }
 
@@ -786,12 +781,8 @@ mod tests {
     #[test]
     fn surpassing_road_length_leader_awards_points() {
         let mut b = Board::default();
-        roads_from_hex(&mut b, Blue, "1c00300800");
-        road(&mut b, Orange, Edge(-1, 0, NW));
-        road(&mut b, Orange, Edge(-1, 0, NE));
-        road(&mut b, Orange, Edge(-1, 0, W));
-        road(&mut b, Orange, Edge(-2, 1, NW));
-        road(&mut b, Orange, Edge(-2, 1, W));
+        roads_from_hex(&mut b, Blue, "1c00300000");
+        roads_from_hex(&mut b, Orange, "e00c0");
         let points_before = b.victory_points(Orange);
 
         road(&mut b, Orange, Edge(-3, 2, NE));
