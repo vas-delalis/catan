@@ -56,6 +56,8 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
 
     println!("Training {} parameters...", model.parameter_count());
 
+    let save_path = get_save_path(&G::name());
+
     let mut dataset_train = Dataset::new(params.train_replays);
     let mut dataset_test = Dataset::new(params.test_replays);
     let start = Instant::now();
@@ -111,6 +113,16 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
         let n = test_losses.len();
         let sum: f32 = test_losses.iter().sum();
         println!("Test: {:.3}", sum / n as f32);
+
+        // Save periodically
+        if epoch % 100 == 0 && epoch < params.epochs {
+            let checkpoint_path = save_path.with_file_name(format!(
+                "{}-{}.safetensors",
+                save_path.file_stem().unwrap().to_string_lossy(),
+                epoch,
+            ));
+            model.var_store().save(&checkpoint_path).unwrap();
+        }
     }
 
     println!("Training complete. Elapsed: {}s", start.elapsed().as_secs());
@@ -127,9 +139,11 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
     tournament.play();
     tournament.leaderboard();
 
-    let path = get_save_path(&G::name());
-    model.save_with_config(&path, &config).unwrap();
-    println!("Saved as {}", &path.file_name().unwrap().to_string_lossy());
+    model.save_with_config(&save_path, &config).unwrap();
+    println!(
+        "Saved as {}",
+        &save_path.file_name().unwrap().to_string_lossy()
+    );
 }
 
 fn get_save_path(game_name: &str) -> PathBuf {
