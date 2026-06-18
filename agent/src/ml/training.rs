@@ -4,7 +4,7 @@ use std::{fs, time::Instant};
 
 use crate::ml::TrainingConfig;
 use crate::{
-    Tournament,
+    INTERRUPTED, Tournament,
     agents::{ConstantEvaluator, Search},
     ml::{Model, data::Dataset, vanilla},
 };
@@ -122,6 +122,20 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
                 epoch,
             ));
             model.var_store().save(&checkpoint_path).unwrap();
+        }
+
+        // Save and quit when interrupted
+        if INTERRUPTED.read() {
+            println!(
+                "\r\x1b[KInterrupted at epoch {}. Saving checkpoint...",
+                epoch
+            );
+            model.save_with_config(&save_path, &config).unwrap();
+            println!(
+                "Saved as {}",
+                save_path.file_name().unwrap().to_string_lossy()
+            );
+            return;
         }
     }
 

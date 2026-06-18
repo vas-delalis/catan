@@ -1,15 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
 
-static INTERRUPTED: AtomicBool = AtomicBool::new(false);
-
-use ctrlc;
 use rand::{rng, seq::SliceRandom};
 
-use crate::{Agent, agents::Random};
+use crate::{Agent, INTERRUPTED, agents::Random};
 use common::{GameState, Outcome, Player};
 
 pub struct Tournament<'a, G> {
@@ -168,11 +164,6 @@ impl<'a, G: GameState> Tournament<'a, G> {
     }
 
     pub fn play(&mut self) {
-        let _ = ctrlc::set_handler(move || {
-            INTERRUPTED.store(true, Ordering::SeqCst);
-        });
-        INTERRUPTED.store(false, Ordering::SeqCst);
-
         let player_count = G::Player::LEN;
         assert!(self.roster.len() >= player_count);
         let start = Instant::now();
@@ -189,9 +180,10 @@ impl<'a, G: GameState> Tournament<'a, G> {
         );
 
         while results < to_test {
-            if INTERRUPTED.load(Ordering::SeqCst) {
+            if INTERRUPTED.read() {
                 println!("\r\x1b[KStopping tournament...");
                 //        ^ Clear "^C"
+                INTERRUPTED.reset();
                 break;
             }
             if self.max_time.is_some_and(|max| start.elapsed() >= max) {
