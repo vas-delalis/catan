@@ -63,8 +63,8 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
     let start = Instant::now();
 
     for epoch in 1..=params.epochs {
-        dataset_train.self_play(&agent, params.self_play_sampling_rate, default_threads());
-        dataset_test.self_play(&agent, params.self_play_sampling_rate, default_threads());
+        dataset_train.self_play(&agent, &params, default_threads());
+        dataset_test.self_play(&agent, &params, default_threads());
 
         // Train
         let mut train_loss = 0.0;

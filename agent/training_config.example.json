@@ -12,6 +12,7 @@
     "train_replays": 2000,
     "test_replays": 200,
     "dirichlet_alpha": 0.005,
-    "self_play_sampling_rate": 0.15
+    "self_play_sampling_rate": 0.15,
+    "self_play_random_action_chance": 0.0
   }
 }

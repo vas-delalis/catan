@@ -2,7 +2,7 @@ use common::{GameState, Player};
 use rand::seq::SliceRandom;
 use tch::no_grad_guard;
 
-use crate::{Agent, agents::Random};
+use crate::{Agent, agents::Random, ml::Hyperparameters};
 
 type Snapshot<G> = (G, Vec<f32>);
 
@@ -27,7 +27,7 @@ impl<G: GameState> Dataset<G> {
         self.replay_buffer.drain(0..)
     }
 
-    pub fn self_play<A>(&mut self, agent: &A, sampling_rate: f64, threads: usize)
+    pub fn self_play<A>(&mut self, agent: &A, params: &Hyperparameters, threads: usize)
     where
         A: Agent<G> + Clone + Send,
         G: Send,
@@ -48,7 +48,14 @@ impl<G: GameState> Dataset<G> {
                     continue;
                 }
 
-                handles.push(s.spawn(move || Self::generate(agent_clone, count, sampling_rate)));
+                handles.push(s.spawn(move || {
+                    Self::generate(
+                        agent_clone,
+                        count,
+                        params.self_play_sampling_rate,
+                        params.self_play_random_action_chance,
+                    )
+                }));
             }
 
             let mut thread_results = Vec::new();
@@ -68,6 +75,7 @@ impl<G: GameState> Dataset<G> {
         agent: A,
         count: usize,
         sampling_rate: f64,
+        random_action_chance: f64,
     ) -> Vec<Snapshot<G>> {
         let _guard = no_grad_guard();
         let mut thread_buffer = Vec::with_capacity(count);
@@ -76,7 +84,7 @@ impl<G: GameState> Dataset<G> {
             let mut game = G::new();
             let mut buffer = vec![];
             while !game.is_terminal() {
-                let action = if game.is_random() {
+                let action = if game.is_random() || rand::random_bool(random_action_chance) {
                     luck.get_action(game.clone())
                 } else {
                     agent.get_action(game.clone())

@@ -29,4 +29,5 @@ pub struct Hyperparameters {
     pub learning_rate: f64,
     pub dirichlet_alpha: f64,
     pub self_play_sampling_rate: f64,
+    pub self_play_random_action_chance: f64,
 }
