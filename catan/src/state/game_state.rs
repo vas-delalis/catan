@@ -16,7 +16,9 @@ impl GameState for State {
         let player = self.current_player();
         match action {
             RollDice => self.roll_dice(),
-            Roll(value) => { self.handle_dice_roll(value); }
+            Roll(value) => {
+                self.handle_dice_roll(value);
+            }
             BuildSettlement(vertex_id) => self.build_settlement(player, vertex_id),
             UpgradeSettlement(vertex_id) => self.upgrade_settlement(player, vertex_id),
             BuildRoad(edge_id) => self.build_road(player, edge_id),
@@ -27,7 +29,9 @@ impl GameState for State {
             PlayDevCard(card) => self.play_dev_card(card),
             Monopolize(res) => self.monopolize(player, res),
             TakeFreeResource(res) => self.take_free_resource(player, res),
-            ExchangeResources(((res1, cost), res2)) => self.exchange_resources(player, res1, cost, res2),
+            ExchangeResources(((res1, cost), res2)) => {
+                self.exchange_resources(player, res1, cost, res2)
+            }
             BuyDevCard => self.buy_dev_card(player),
             ReceiveDevCard(card) => self.receive_dev_card(player, card),
             EndTurn => self.end_turn(),
@@ -61,7 +65,7 @@ impl GameState for State {
             YearOfPlenty(_) => self.get_year_of_plenty_actions(),
             Discarding(_) => self.get_discard_actions(self.current_player()),
             StealingFromHex(hex_id) => self.get_hex_steal_actions(hex_id),
-            RoadBuilding(remaining) => self.get_road_building_actions(player, remaining),
+            RoadBuilding(_) => self.get_build_road_actions(player),
         };
         assert_ne!(actions.len(), 0);
         (actions, None)
