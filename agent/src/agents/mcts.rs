@@ -4,6 +4,7 @@ use rand_distr::{Distribution, Gamma};
 use std::cell::RefCell;
 
 use crate::{Agent, GameState};
+use common::Player;
 
 pub trait Evaluator<G: GameState> {
     fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32;
@@ -112,15 +113,21 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
     }
 
-    fn evaluate<'a>(&self, node: &'a mut Node, game: &G, arbiter: G::Player) -> f64 {
+    fn evaluate<'a>(&self, node: &'a mut Node, game: &G) -> Vec<f64> {
         let to_play = game.current_player();
-        if let Some((_, value)) = game.outcome(arbiter) {
-            return value as f64;
+        if game.is_terminal() {
+            return G::Player::list()
+                .iter()
+                .map(|&p| game.outcome(p).unwrap().1 as f64)
+                .collect();
         }
         let (actions, probs) = game.get_actions(to_play);
 
         // Run inference
-        let value = self.evaluator.evaluate(game, arbiter);
+        let values = G::Player::list()
+            .iter()
+            .map(|&p| self.evaluator.evaluate(game, p) as f64)
+            .collect();
         // Convert priors into odds
         let policy: Vec<f64> = if let Some(probs) = probs {
             probs.into_iter().map(|p| p / (1.0 - p)).collect()
@@ -136,39 +143,39 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             let child = Node::new(p / sum);
             node.children.insert(action.into(), child);
         }
-        value as f64
+        values
     }
 
     pub fn run(&self) -> G::Action {
         let (game_state, mut root) = self.tree.borrow_mut().take().unwrap();
-        let arbiter = game_state.current_player();
 
         if root.children.is_empty() {
-            self.evaluate(&mut root, &game_state, arbiter);
+            self.evaluate(&mut root, &game_state);
             self.add_exploration_noise(&mut root);
         }
 
+        let mut search_path: Vec<(G::Player, G::Action)> = vec![];
         for _ in 0..self.max_evals {
             let mut node = &mut root;
             let mut scratch = game_state.clone();
-            let mut search_path: Vec<G::Action> = vec![];
+            search_path.clear();
 
             while !node.children.is_empty() {
                 let action = self.select_child(node);
                 node = node.children.get_mut(&action.into()).unwrap();
+                search_path.push((scratch.current_player(), action));
                 scratch.apply_action(action);
-                search_path.push(action);
             }
 
-            let value = self.evaluate(node, &scratch, arbiter);
+            let values = self.evaluate(node, &scratch);
 
             // Backpropagate
-            root.total_value += value;
+            root.total_value += values[game_state.current_player().into()];
             root.visits += 1;
             let mut node = &mut root;
-            for a in search_path {
+            for &(played, a) in &search_path {
                 node = node.children.get_mut(&a.into()).unwrap();
-                node.total_value += value;
+                node.total_value += values[played.into()];
                 node.visits += 1;
             }
         }
