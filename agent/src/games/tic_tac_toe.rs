@@ -156,38 +156,43 @@ impl fmt::Display for TicTacToe {
 }
 
 impl Image for TicTacToe {
-    const IMAGE_SIZE: i64 = 19;
+    const IMAGE_SIZE: i64 = 20;
 
-    fn image(&self, _: Self::Player) -> tch::Tensor {
-        let mut plane1: Vec<f32> = vec![];
-        let mut plane2: Vec<f32> = vec![];
-        let plane3: Vec<f32> = if self.current_player() == TicTacToePlayer::X {
-            vec![1.0; 1]
-        } else {
-            vec![0.0; 1]
-        };
+    fn image(&self, arbiter: Self::Player) -> tch::Tensor {
+        let mut exes: Vec<f32> = vec![];
+        let mut ohs: Vec<f32> = vec![];
 
         for tile in self.board {
             match tile {
                 Some(p) => {
                     if p == TicTacToePlayer::X {
-                        plane1.push(1.0);
-                        plane2.push(0.0);
+                        exes.push(1.0);
+                        ohs.push(0.0);
                     } else {
-                        plane1.push(0.0);
-                        plane2.push(1.0);
+                        exes.push(0.0);
+                        ohs.push(1.0);
                     }
                 }
                 None => {
-                    plane1.push(0.0);
-                    plane2.push(0.0);
+                    exes.push(0.0);
+                    ohs.push(0.0);
                 }
             }
         }
-        let plane1 = Tensor::from_slice(&plane1);
-        let plane2 = Tensor::from_slice(&plane2);
-        let plane3 = Tensor::from_slice(&plane3); //.reshape([3, 3]);
 
-        Tensor::cat(&[plane1, plane2, plane3], 0)
+        let curr: Vec<f32> = if self.current_player() == TicTacToePlayer::X {
+            vec![1.0]
+        } else {
+            vec![0.0]
+        };
+        let arb: Vec<f32> = if arbiter == TicTacToePlayer::X {
+            vec![1.0]
+        } else {
+            vec![0.0]
+        };
+
+        Tensor::from_slice(&[exes, ohs, curr, arb].concat())
+    }
+}
     }
 }
