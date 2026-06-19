@@ -10,4 +10,4 @@ pub use dots_and_boxes::{
 };
 pub use odds_game::{NormalizedOddsEvaluator, OddsEvaluator, OddsGame};
 pub use pig::{Pig, PigAction, PigPlayer};
-pub use tic_tac_toe::{Cell, TicTacToe, TicTacToePlayer};
+pub use tic_tac_toe::{Cell, Optimal as OptimalTicTacToe, TicTacToe, TicTacToePlayer};
