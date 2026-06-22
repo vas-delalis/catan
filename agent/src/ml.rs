@@ -1,8 +1,10 @@
 mod data;
 mod model;
+mod quantization;
 mod training;
 
 pub use model::{Model, vanilla};
+pub use quantization::QuantizedEvaluator;
 use serde::{Deserialize, Serialize};
 pub use training::train;
 

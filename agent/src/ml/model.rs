@@ -20,14 +20,14 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
     Box::new(move |root: &VSPath<'_>| {
         let mut seq = nn::seq()
             .add(nn::linear(
-                root.clone() / "layer1",
+                root.clone() / "layer0",
                 G::IMAGE_SIZE,
                 hidden,
                 Default::default(),
             ))
             .add_fn(|xs| xs.relu().clamp(0.0, 1.984375));
 
-        for i in 2..layers + 1 {
+        for i in 1..layers {
             seq = seq
                 .add(nn::linear(
                     root.clone() / format!("layer{}", i),

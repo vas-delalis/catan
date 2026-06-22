@@ -1,8 +1,15 @@
+use std::{hint::black_box, path::PathBuf};
+
 #[allow(unused)]
 use agent::{
     Agent,
     agents::{ConstantEvaluator, Random, Search},
     games::DotsAndBoxes,
+};
+use agent::{
+    agents::Evaluator,
+    games::{Cell, TicTacToe, TicTacToePlayer},
+    ml::{Model, QuantizedEvaluator},
 };
 use common::GameState;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
@@ -46,5 +53,55 @@ fn mcts(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, dots_and_boxes, mcts);
+fn tic_tac_toe_game() -> TicTacToe {
+    let mut game = TicTacToe::new();
+    game.apply_action(Cell(0)); // X O X
+    game.apply_action(Cell(1)); // X O X
+    game.apply_action(Cell(2)); // O X -
+    game.apply_action(Cell(4));
+    game.apply_action(Cell(3));
+    game.apply_action(Cell(6));
+    game.apply_action(Cell(5));
+    game.apply_action(Cell(7));
+    game
+}
+
+fn inference(c: &mut Criterion) {
+    let game = tic_tac_toe_game();
+
+    let (model, _) =
+        Model::load::<TicTacToe>(&PathBuf::from("./models/TicTacToe/2.safetensors")).unwrap();
+    let quantized_evaluator = QuantizedEvaluator::new(&model);
+
+    let mut group = c.benchmark_group("inference");
+    group.throughput(criterion::Throughput::Elements(1));
+    group.bench_function("float", |b| {
+        b.iter(|| model.evaluate(black_box(&game), TicTacToePlayer::X))
+    });
+    group.bench_function("quantized", |b| {
+        b.iter(|| quantized_evaluator.evaluate(black_box(&game), TicTacToePlayer::X))
+    });
+}
+
+fn quantized_inference(c: &mut Criterion) {
+    let game = tic_tac_toe_game();
+
+    let (model, _) =
+        Model::load::<TicTacToe>(&PathBuf::from("./models/TicTacToe/2.safetensors")).unwrap();
+    let quantized_evaluator = QuantizedEvaluator::new(&model);
+
+    let mut group = c.benchmark_group("inference");
+    group.throughput(criterion::Throughput::Elements(1));
+    group.bench_function("quantized_inference", |b| {
+        b.iter(|| quantized_evaluator.evaluate(black_box(&game), TicTacToePlayer::X))
+    });
+}
+
+criterion_group!(
+    benches,
+    dots_and_boxes,
+    mcts,
+    inference,
+    quantized_inference
+);
 criterion_main!(benches);
