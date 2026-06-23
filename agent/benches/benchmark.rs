@@ -70,7 +70,7 @@ fn inference(c: &mut Criterion) {
     let game = tic_tac_toe_game();
 
     let (model, _) =
-        Model::load::<TicTacToe>(&PathBuf::from("./models/TicTacToe/2.safetensors")).unwrap();
+        Model::load::<TicTacToe>(&PathBuf::from("./models/TicTacToe/3.safetensors")).unwrap();
     let quantized_evaluator = QuantizedEvaluator::new(&model);
 
     let mut group = c.benchmark_group("inference");
@@ -83,25 +83,5 @@ fn inference(c: &mut Criterion) {
     });
 }
 
-fn quantized_inference(c: &mut Criterion) {
-    let game = tic_tac_toe_game();
-
-    let (model, _) =
-        Model::load::<TicTacToe>(&PathBuf::from("./models/TicTacToe/2.safetensors")).unwrap();
-    let quantized_evaluator = QuantizedEvaluator::new(&model);
-
-    let mut group = c.benchmark_group("inference");
-    group.throughput(criterion::Throughput::Elements(1));
-    group.bench_function("quantized_inference", |b| {
-        b.iter(|| quantized_evaluator.evaluate(black_box(&game), TicTacToePlayer::X))
-    });
-}
-
-criterion_group!(
-    benches,
-    dots_and_boxes,
-    mcts,
-    inference,
-    quantized_inference
-);
+criterion_group!(benches, dots_and_boxes, mcts, inference,);
 criterion_main!(benches);

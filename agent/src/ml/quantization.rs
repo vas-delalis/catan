@@ -1,4 +1,8 @@
-use std::arch::x86_64::*;
+use std::{
+    alloc::{Layout, handle_alloc_error},
+    arch::x86_64::*,
+    ptr::slice_from_raw_parts_mut,
+};
 
 use common::{GameState, Image};
 use tch::Tensor;
@@ -10,19 +14,24 @@ const WEIGHT_SCALE: i64 = 64;
 const WEIGHT_SCALE_LOG2: i32 = 6;
 const OUTPUT_SCALE: i64 = 64;
 
-// #[repr(align(64))]
-struct Buffer32(Vec<i32>);
-
-// #[repr(align(64))]
-struct Buffer8(Vec<i8>);
-
-// #[repr(align(64))]
 struct Outputs {
-    linear0: Buffer32,
-    crelu0: Buffer8,
-    linear1: Buffer32,
-    crelu1: Buffer8,
-    output: Buffer32,
+    linear0: *mut [i32],
+    crelu0: *mut [i32],
+    linear1: *mut [i32],
+    crelu1: *mut [i8],
+    output: *mut [i32],
+}
+
+impl Outputs {
+    fn clear(&self) {
+        unsafe {
+            (self.linear0 as *mut i32).write_bytes(0, self.linear0.len());
+            (self.crelu0 as *mut i8).write_bytes(0, self.crelu0.len());
+            (self.linear1 as *mut i32).write_bytes(0, self.linear1.len());
+            (self.crelu1 as *mut i8).write_bytes(0, self.crelu1.len());
+            (self.output as *mut i32).write_bytes(0, self.output.len());
+        }
+    }
 }
 
 pub struct QuantizedEvaluator {
@@ -31,6 +40,7 @@ pub struct QuantizedEvaluator {
     linear1: LinearLayer,
     crelu1: CReLU,
     output: LinearLayer,
+    outputs: Outputs,
 }
 
 impl QuantizedEvaluator {
@@ -39,16 +49,28 @@ impl QuantizedEvaluator {
             &model.var_store().variables()["layer0.weight"],
             &model.var_store().variables()["layer0.bias"],
         );
-        let crelu0 = CReLU {};
+        let crelu0 = CReLU {
+            num_out_chunks: linear0.padded_num_out.next_multiple_of(32) / 32,
+        };
         let linear1 = LinearLayer::from_tensors(
             &model.var_store().variables()["layer1.weight"],
             &model.var_store().variables()["layer1.bias"],
         );
-        let crelu1 = CReLU {};
+        let crelu1 = CReLU {
+            num_out_chunks: linear1.padded_num_out.next_multiple_of(32) / 32,
+        };
         let output = LinearLayer::from_tensors(
             &model.var_store().variables()["output.weight"],
             &model.var_store().variables()["output.bias"],
         );
+
+        let outputs = Outputs {
+            linear0: allocate_aligned_slice(linear0.padded_num_out.next_multiple_of(32) * 4),
+            crelu0: allocate_aligned_slice(linear1.padded_num_in),
+            linear1: allocate_aligned_slice(linear1.padded_num_out.next_multiple_of(32) * 4),
+            crelu1: allocate_aligned_slice(output.padded_num_in),
+            output: allocate_aligned_slice(output.padded_num_out * 4),
+        };
 
         Self {
             linear0,
@@ -56,44 +78,85 @@ impl QuantizedEvaluator {
             linear1,
             crelu1,
             output,
+            outputs,
         }
     }
 }
 
 impl<G: GameState + Image> Evaluator<G> for QuantizedEvaluator {
     fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
+        self.outputs.clear();
         let input_tensor = game_state.image(arbiter);
         let input = (&input_tensor * ACTIVATION_SCALE).internal_cast_byte(false);
-        let mut input: Vec<i8> = input.try_into().unwrap();
-        input.extend_from_slice(&vec![0; 32 - input.len()]);
 
-        let mut outputs = Outputs {
-            linear0: Buffer32(vec![0; self.linear0.padded_num_out.next_multiple_of(32)]),
-            crelu0: Buffer8(vec![0; self.linear1.padded_num_in]),
-            linear1: Buffer32(vec![0; self.linear1.padded_num_out.next_multiple_of(32)]),
-            crelu1: Buffer8(vec![0; self.output.padded_num_in]),
-            output: Buffer32(vec![0; self.output.padded_num_out]),
+        let input = unsafe {
+            let layout = Layout::from_size_align(32, 64).unwrap();
+            let ptr = std::alloc::alloc_zeroed(layout);
+            if ptr.is_null() {
+                handle_alloc_error(layout);
+            }
+            ptr.copy_from(input.data_ptr() as *const u8, input.numel());
+            ptr as *mut i8
         };
 
         unsafe {
-            self.linear0.run(&input, &mut outputs.linear0.0);
-            self.crelu0.run(&outputs.linear0.0, &mut outputs.crelu0.0);
+            self.linear0.run(input, self.outputs.linear0 as *mut i32);
+            // dbg!(&outputs.linear0.0[..4]);
+            self.crelu0.run(
+                self.outputs.linear0 as *mut i32,
+                self.outputs.crelu0 as *mut i8,
+            );
+            // dbg!(&outputs.crelu0.0[..4]);
 
-            self.linear1.run(&outputs.crelu0.0, &mut outputs.linear1.0);
-            self.crelu1.run(&outputs.linear1.0, &mut outputs.crelu1.0);
+            self.linear1.run(
+                self.outputs.crelu0 as *mut i8,
+                self.outputs.linear1 as *mut i32,
+            );
+            // dbg!(&outputs.linear1.0[..4]);
+            self.crelu1.run(
+                self.outputs.linear1 as *mut i32,
+                self.outputs.crelu1 as *mut i8,
+            );
+            // dbg!(&outputs.crelu1.0[..4]);
 
-            self.output.run(&outputs.crelu1.0, &mut outputs.output.0);
-        };
-        outputs.output.0[0] as f32 / 64.0
+            self.output.run(
+                self.outputs.crelu1 as *mut i8,
+                self.outputs.output as *mut i32,
+            );
+            // dbg!(&outputs.output.0[..4]);
+            (self.outputs.output as *mut i32).read() as f32 / 64.0
+        }
+    }
+}
+
+fn allocate_aligned<T>(size: usize) -> *mut T {
+    unsafe {
+        let layout = Layout::from_size_align(size, 64).unwrap();
+        let ptr = std::alloc::alloc_zeroed(layout);
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        }
+        ptr as *mut T
+    }
+}
+
+fn allocate_aligned_slice<T>(size: usize) -> *mut [T] {
+    unsafe {
+        let layout = Layout::from_size_align(size, 64).unwrap();
+        let ptr = std::alloc::alloc_zeroed(layout);
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        }
+        slice_from_raw_parts_mut(ptr as *mut T, size / size_of::<T>())
     }
 }
 
 struct LinearLayer {
     padded_num_in: usize,
     padded_num_out: usize,
-    weights: Vec<i8>,
-    bias: Vec<i32>,
     num_out_chunks: usize,
+    weights: *const i8,
+    bias: *const i32,
 }
 
 impl LinearLayer {
@@ -104,6 +167,9 @@ impl LinearLayer {
         let padded_num_out = num_out.next_multiple_of(4);
         let padding_rows = padded_num_out - num_out;
         let padding_cols = padded_num_in - num_in;
+
+        let weights_buffer: *mut i8 = allocate_aligned(padded_num_in * padded_num_out);
+        let bias_buffer: *mut i32 = allocate_aligned(size_of::<i32>() * padded_num_out);
 
         let weights: Vec<i8> = (weights * WEIGHT_SCALE)
             .pad(
@@ -121,26 +187,31 @@ impl LinearLayer {
             .try_into()
             .unwrap();
 
+        unsafe {
+            weights_buffer.copy_from(weights.as_ptr(), weights.len());
+            bias_buffer.copy_from(bias.as_ptr(), bias.len());
+        }
+
         Self {
             padded_num_in,
             padded_num_out,
             num_out_chunks: padded_num_out / 4,
-            weights,
-            bias,
+            weights: weights_buffer,
+            bias: bias_buffer,
         }
     }
 
-    unsafe fn run(&self, input: &[i8], output: &mut [i32]) {
+    unsafe fn run(&self, input: *const i8, output: *mut i32) {
         let register_width = 256 / 8;
-        let num_in_chunks = input.len() / register_width;
+        let num_in_chunks = self.padded_num_in / register_width;
 
-        debug_assert!(input.len() % 32 == 0);
+        debug_assert!(self.padded_num_in % 32 == 0);
         debug_assert_ne!(self.num_out_chunks, 0);
 
-        let input = input.as_ptr() as *const __m256i;
-        let weights = (&self.weights).as_ptr() as *const __m256i;
-        let bias = (&self.bias).as_ptr() as *const __m128i;
-        let output = (output).as_mut_ptr() as *mut __m128i;
+        let input = input as *const __m256i;
+        let weights = self.weights as *const __m256i;
+        let bias = self.bias as *const __m128i;
+        let output = output as *mut __m128i;
 
         for i in 0..self.num_out_chunks {
             let offset0 = (i * 4 + 0) * num_in_chunks;
@@ -155,12 +226,12 @@ impl LinearLayer {
                 let mut sum3 = _mm256_setzero_si256();
 
                 for j in 0..num_in_chunks {
-                    let batch = _mm256_loadu_si256(input.add(j));
+                    let batch = _mm256_load_si256(input.add(j));
 
-                    let w0 = _mm256_loadu_si256(weights.add(offset0 + j));
-                    let w1 = _mm256_loadu_si256(weights.add(offset1 + j));
-                    let w2 = _mm256_loadu_si256(weights.add(offset2 + j));
-                    let w3 = _mm256_loadu_si256(weights.add(offset3 + j));
+                    let w0 = _mm256_load_si256(weights.add(offset0 + j));
+                    let w1 = _mm256_load_si256(weights.add(offset1 + j));
+                    let w2 = _mm256_load_si256(weights.add(offset2 + j));
+                    let w3 = _mm256_load_si256(weights.add(offset3 + j));
                     sum0 = _mm256_dpbusd_epi32(sum0, batch, w0);
                     sum1 = _mm256_dpbusd_epi32(sum1, batch, w1);
                     sum2 = _mm256_dpbusd_epi32(sum2, batch, w2);
@@ -172,35 +243,35 @@ impl LinearLayer {
                 let outval = m256_haddx4(sum0, sum1, sum2, sum3, bias);
                 let outval = _mm_srai_epi32::<WEIGHT_SCALE_LOG2>(outval);
 
-                _mm_store_si128(output.wrapping_add(i), outval);
+                _mm_store_si128(output.add(i), outval);
             }
         }
     }
 }
 
-struct CReLU {}
+struct CReLU {
+    num_out_chunks: usize,
+}
 
 impl CReLU {
-    unsafe fn run(&self, input: &[i32], output: &mut [i8]) {
-        let out_register_width = 256 / 8;
-        let num_out_chunks = input.len() / out_register_width;
-        debug_assert_ne!(num_out_chunks, 0);
+    unsafe fn run(&self, input: *const i32, output: *mut i8) {
+        debug_assert_ne!(self.num_out_chunks, 0);
 
-        let input = input.as_ptr() as *const __m256i;
-        let output = (output).as_mut_ptr() as *mut __m256i;
+        let input = input as *const __m256i;
+        let output = output as *mut __m256i;
 
         unsafe {
             let zero = _mm256_setzero_si256();
             let control = _mm256_set_epi32(7, 3, 6, 2, 5, 1, 4, 0);
 
-            for i in 0..num_out_chunks {
+            for i in 0..self.num_out_chunks {
                 let in0 = _mm256_packus_epi32(
-                    _mm256_loadu_si256(input.add(i * 4 + 0)),
-                    _mm256_loadu_si256(input.add(i * 4 + 1)),
+                    _mm256_load_si256(input.add(i * 4 + 0)),
+                    _mm256_load_si256(input.add(i * 4 + 1)),
                 );
                 let in1 = _mm256_packus_epi32(
-                    _mm256_loadu_si256(input.add(i * 4 + 2)),
-                    _mm256_loadu_si256(input.add(i * 4 + 3)),
+                    _mm256_load_si256(input.add(i * 4 + 2)),
+                    _mm256_load_si256(input.add(i * 4 + 3)),
                 );
 
                 let result = _mm256_permutevar8x32_epi32(
@@ -208,7 +279,7 @@ impl CReLU {
                     control,
                 );
 
-                _mm256_storeu_si256(output.add(i), result);
+                _mm256_store_si256(output.add(i), result);
             }
         };
     }
