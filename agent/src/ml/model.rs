@@ -25,7 +25,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
                 hidden,
                 Default::default(),
             ))
-            .add_fn(|xs| xs.relu().clamp(0.0, 1.984375));
+            .add_fn(|xs| xs.clamp(0.0, 1.984375));
 
         for i in 1..layers {
             seq = seq
@@ -35,7 +35,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
                     hidden,
                     Default::default(),
                 ))
-                .add_fn(|xs| xs.relu().clamp(0.0, 1.984375));
+                .add_fn(|xs| xs.clamp(0.0, 1.984375));
         }
 
         seq = seq.add(nn::linear(
