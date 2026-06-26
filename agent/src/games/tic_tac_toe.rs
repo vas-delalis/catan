@@ -3,7 +3,10 @@ use std::fmt;
 use common::{Image, Outcome, Player};
 use tch::Tensor;
 
-use crate::{Agent, GameState};
+use crate::{
+    Agent, GameState,
+    ml::{ACTIVATION_SCALE, QuantizedImage},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TicTacToePlayer {
@@ -195,6 +198,29 @@ impl Image for TicTacToe {
     }
 }
 
+impl QuantizedImage for TicTacToe {
+    const IMAGE_SIZE: usize = 20;
+
+    fn image(&self, buffer: *mut i8, perspective: Self::Player) {
+        let scale = ACTIVATION_SCALE as i8;
+
+        for (i, tile) in self.board.iter().enumerate() {
+            if let Some(p) = tile {
+                unsafe {
+                    buffer.add(i + 0).write(scale * (1 - (*p as i8)));
+                    buffer.add(i + 9).write(scale * (0 + (*p as i8)));
+                }
+            }
+        }
+        unsafe {
+            buffer
+                .add(18)
+                .write(scale * (1 - (self.current_player() as i8)));
+            buffer.add(19).write(scale * (1 - (perspective as i8)));
+        }
+    }
+}
+
 pub struct Optimal;
 
 impl Optimal {
@@ -354,5 +380,37 @@ impl Agent<TicTacToe> for Optimal {
         }
 
         unreachable!("no valid move")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tch::IndexOp;
+
+    use super::*;
+    use crate::{
+        agents::Random,
+        ml::{QuantizedImage, allocate_aligned_slice},
+    };
+
+    #[test]
+    fn quantized_image_matches_normal() {
+        let luck = Random {};
+        for _ in 0..100 {
+            let mut game = TicTacToe::new();
+            while !game.is_terminal() {
+                let action = luck.get_action(game.clone());
+                game.apply_action(action);
+
+                let normal = Image::image(&game, TicTacToePlayer::X);
+                let quantized: *mut [i8] = allocate_aligned_slice(32);
+                QuantizedImage::image(&game, quantized as *mut i8, TicTacToePlayer::X);
+
+                for i in 0..<TicTacToe as QuantizedImage>::IMAGE_SIZE {
+                    let a: i8 = (normal.i(i as i64) * 64).try_into().unwrap();
+                    assert_eq!(a, unsafe { (quantized as *mut i8).add(i as usize).read() })
+                }
+            }
+        }
     }
 }

@@ -1,7 +1,15 @@
 use std::{fmt::Display, sync::LazyLock};
 
-use crate::{GameState, agents::Evaluator};
+use crate::{
+    GameState,
+    agents::Evaluator,
+    ml::{ACTIVATION_SCALE, QuantizedImage},
+};
 use common::{Image, Outcome, Player as PlayerTrait};
+
+const R: usize = 5;
+const C: usize = 5;
+const N_EDGES: usize = 2 * R * C + R + C;
 
 #[derive(Clone)]
 pub struct DotsAndBoxes {
@@ -193,7 +201,7 @@ impl Image for DotsAndBoxes {
         let mut score = vec![0f32; 4];
         let max = (R * C) as f32 / 2 as f32;
         for i in 0..4 {
-            score[i] = self.score[i] as f32 - max;
+            score[i] = self.score[i] as f32 / max;
         }
 
         let mut to_play = vec![0f32; 4];
@@ -203,6 +211,41 @@ impl Image for DotsAndBoxes {
         arbiter_vec[arbiter as usize] = 1.0;
 
         Tensor::from_slice(&[board_image, score, to_play, arbiter_vec].concat())
+    }
+}
+
+impl QuantizedImage for DotsAndBoxes {
+    const IMAGE_SIZE: usize = N_EDGES + 12;
+
+    fn image(&self, buffer: *mut i8, perspective: Self::Player) {
+        let scale = ACTIVATION_SCALE as i8;
+
+        let mut idx = buffer.clone();
+        let mut board = self.board;
+        for _ in 0..N_EDGES {
+            unsafe {
+                idx.write((board & 1) as i8 * scale);
+                idx = idx.add(1);
+            }
+            board >>= 1;
+        }
+
+        let max = (R * C) as f32 / 2 as f32;
+        for i in 0..4 {
+            let normalized = self.score[i] as f32 / max;
+            unsafe {
+                idx.write((scale as f32 * normalized) as i8);
+                idx = idx.add(1);
+            }
+        }
+        let current = self.current_player() as usize;
+        let perspective = perspective as usize;
+        unsafe {
+            idx = idx.add(current);
+            idx.write(scale);
+            idx = idx.add(4 - current + perspective);
+            idx.write(scale);
+        }
     }
 }
 
@@ -293,10 +336,6 @@ impl Edge {
     }
 }
 
-const R: usize = 5;
-const C: usize = 5;
-const N_EDGES: usize = 2 * R * C + R + C;
-
 static BOXES: LazyLock<[(u64, u64); N_EDGES]> = LazyLock::new(|| {
     std::array::from_fn(|i| {
         let e = Edge::from_index(i);
@@ -337,7 +376,10 @@ impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
 
 #[cfg(test)]
 mod tests {
+    use tch::IndexOp;
+
     use super::*;
+    use crate::{Agent, agents::Random, ml::allocate_aligned_slice};
 
     #[test]
     fn get_actions() {
@@ -348,5 +390,50 @@ mod tests {
         game.apply_action(actions[1]);
         let (actions, _) = game.get_actions(Player::B);
         assert_eq!(actions.len(), N_EDGES - 1);
+    }
+
+    #[test]
+    fn quantized_image_matches_normal() {
+        let luck = Random {};
+        let image_size = <DotsAndBoxes as QuantizedImage>::IMAGE_SIZE;
+        let quantized_img: *mut [i8] = allocate_aligned_slice(image_size.next_multiple_of(32));
+        for _ in 0..1000 {
+            let mut game = DotsAndBoxes::new();
+            while !game.is_terminal() {
+                let action = luck.get_action(game.clone());
+                game.apply_action(action);
+
+                let normal_img = Image::image(&game, Player::A);
+                QuantizedImage::image(&game, quantized_img as *mut i8, Player::A);
+
+                for i in 0..image_size {
+                    let a: i8 = (normal_img.i(i as i64) * 64).try_into().unwrap();
+                    assert_eq!(a, unsafe {
+                        (quantized_img as *mut i8).add(i as usize).read()
+                    })
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn quantized_image_non_negative() {
+        let luck = Random {};
+        let image_size = <DotsAndBoxes as QuantizedImage>::IMAGE_SIZE;
+        let img: *mut [i8] = allocate_aligned_slice(image_size.next_multiple_of(32));
+        for _ in 0..1000 {
+            let mut game = DotsAndBoxes::new();
+            while !game.is_terminal() {
+                let action = luck.get_action(game.clone());
+                game.apply_action(action);
+
+                QuantizedImage::image(&game, img as *mut i8, Player::A);
+
+                for i in 0..image_size {
+                    let value = unsafe { (img as *mut i8).add(i as usize).read() };
+                    assert!(value >= 0)
+                }
+            }
+        }
     }
 }
