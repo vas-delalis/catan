@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::{fs, time::Instant};
 
 use crate::ml::TrainingConfig;
+use crate::ml::quantization::CLAMP_LIMIT;
 use crate::{
     INTERRUPTED, Tournament,
     agents::{ConstantEvaluator, Search},
@@ -87,6 +88,14 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
 
             let loss = output.mse_loss(&targets, tch::Reduction::Sum);
             optimizer.backward_step(&loss);
+            {
+                // Clamp weights for later quantization
+                let _no_grad = tch::no_grad_guard();
+                for p in &mut model.var_store().trainable_variables() {
+                    let _ = p.clamp_(-CLAMP_LIMIT, CLAMP_LIMIT);
+                }
+            }
+
             let loss: f32 = loss.try_into().unwrap();
             train_loss += loss;
         }

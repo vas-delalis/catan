@@ -5,7 +5,11 @@ use tch::{
     nn::{self, Path as VSPath, Sequential, VarStore},
 };
 
-use crate::{GameState, agents::Evaluator, ml::TrainingConfig};
+use crate::{
+    GameState,
+    agents::Evaluator,
+    ml::{TrainingConfig, quantization::CLAMP_LIMIT},
+};
 use common::Image;
 
 pub struct Model {
@@ -25,7 +29,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
                 hidden,
                 Default::default(),
             ))
-            .add_fn(|xs| xs.clamp(0.0, 1.984375));
+            .add_fn(|xs| xs.clamp(0.0, CLAMP_LIMIT));
 
         for i in 1..layers {
             seq = seq
@@ -35,7 +39,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
                     hidden,
                     Default::default(),
                 ))
-                .add_fn(|xs| xs.clamp(0.0, 1.984375));
+                .add_fn(|xs| xs.clamp(0.0, CLAMP_LIMIT));
         }
 
         seq = seq.add(nn::linear(

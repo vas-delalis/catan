@@ -18,7 +18,7 @@ impl Image for State {
 
         let mut score = vec![0f32; 4];
         for p in Self::Player::list() {
-            score[p as usize] = self.victory_points(p) as f32 - 5.0;
+            score[p as usize] = self.victory_points(p) as f32 / 10.0;
         }
 
         let mut turn = vec![0f32; 4];

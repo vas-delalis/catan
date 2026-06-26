@@ -1,51 +1,43 @@
-use std::{
-    alloc::{Layout, handle_alloc_error},
-    arch::x86_64::*,
-    ptr::slice_from_raw_parts_mut,
-};
+use std::{arch::x86_64::*, marker::PhantomData};
 
-use common::{GameState, Image};
+use common::GameState;
 use tch::Tensor;
 
 use crate::{agents::Evaluator, ml::Model};
 
-const ACTIVATION_SCALE: i64 = 64;
+pub use utils::allocate_aligned_slice;
+
+pub const CLAMP_LIMIT: f64 = 1.984375;
+pub const ACTIVATION_SCALE: i64 = 64;
 const WEIGHT_SCALE: i64 = 64;
 const WEIGHT_SCALE_LOG2: i32 = 6;
 const OUTPUT_SCALE: i64 = 64;
+/// Size of a 256-bit register in bytes.
 const REGISTER_WIDTH: usize = 256 / (size_of::<i8>() * 8);
 
-struct Outputs {
-    linear0: *mut [i32],
-    crelu0: *mut [i8],
-    linear1: *mut [i32],
-    crelu1: *mut [i8],
-    output: *mut [i32],
+pub trait QuantizedImage: GameState {
+    const IMAGE_SIZE: usize;
+    fn image(&self, buffer: *mut i8, perspective: Self::Player);
 }
 
-impl Outputs {
-    fn clear(&self) {
-        unsafe {
-            (self.linear0 as *mut i32).write_bytes(0, self.linear0.len());
-            (self.crelu0 as *mut i8).write_bytes(0, self.crelu0.len());
-            (self.linear1 as *mut i32).write_bytes(0, self.linear1.len());
-            (self.crelu1 as *mut i8).write_bytes(0, self.crelu1.len());
-            (self.output as *mut i32).write_bytes(0, self.output.len());
-        }
-    }
-}
-
-pub struct QuantizedEvaluator {
+/// Significantly accelerates a [Model]'s inference by quantizing its parameters.
+pub struct QuantizedEvaluator<G: QuantizedImage> {
     linear0: LinearLayer,
     crelu0: CReLU,
     linear1: LinearLayer,
     crelu1: CReLU,
     output: LinearLayer,
-    outputs: Outputs,
+    buffers: Buffers,
+    _game: PhantomData<G>,
 }
 
-impl QuantizedEvaluator {
+impl<G: QuantizedImage> QuantizedEvaluator<G> {
     pub fn new(model: &Model) -> Self {
+        assert!(
+            !model.var_store().variables().contains_key("layer2.weight"),
+            "QuantizedEvaluator only supports models with 2 hidden layers."
+        );
+
         let linear0 = LinearLayer::from_tensors(
             &model.var_store().variables()["layer0.weight"],
             &model.var_store().variables()["layer0.bias"],
@@ -65,7 +57,8 @@ impl QuantizedEvaluator {
             &model.var_store().variables()["output.bias"],
         );
 
-        let outputs = Outputs {
+        let buffers = Buffers {
+            input: allocate_aligned_slice(G::IMAGE_SIZE.next_multiple_of(32) * size_of::<i8>()),
             linear0: allocate_aligned_slice(
                 linear0.padded_num_out.next_multiple_of(32) * size_of::<i32>(),
             ),
@@ -83,64 +76,62 @@ impl QuantizedEvaluator {
             linear1,
             crelu1,
             output,
-            outputs,
+            buffers,
+            _game: PhantomData,
         }
     }
 }
 
-impl<G: GameState + Image> Evaluator<G> for QuantizedEvaluator {
-    fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
-        self.outputs.clear();
-        let input_tensor = game_state.image(arbiter);
-        let input_tensor = (&input_tensor * ACTIVATION_SCALE).internal_cast_byte(false);
-
-        let input: *mut i8 =
-            allocate_aligned(input_tensor.numel().next_multiple_of(32) * size_of::<i8>());
+impl<G: GameState + QuantizedImage> Evaluator<G> for QuantizedEvaluator<G> {
+    fn evaluate(&self, game_state: &G, perspective: G::Player) -> f32 {
+        self.buffers.clear();
+        QuantizedImage::image(game_state, self.buffers.input as *mut i8, perspective);
 
         unsafe {
-            input.copy_from(input_tensor.data_ptr() as *const i8, input_tensor.numel());
-
-            self.linear0.run(input, self.outputs.linear0 as *mut i32);
+            self.linear0.run(
+                self.buffers.input as *mut i8,
+                self.buffers.linear0 as *mut i32,
+            );
             self.crelu0.run(
-                self.outputs.linear0 as *const i32,
-                self.outputs.crelu0 as *mut i8,
+                self.buffers.linear0 as *const i32,
+                self.buffers.crelu0 as *mut i8,
             );
             self.linear1.run(
-                self.outputs.crelu0 as *const i8,
-                self.outputs.linear1 as *mut i32,
+                self.buffers.crelu0 as *const i8,
+                self.buffers.linear1 as *mut i32,
             );
             self.crelu1.run(
-                self.outputs.linear1 as *const i32,
-                self.outputs.crelu1 as *mut i8,
+                self.buffers.linear1 as *const i32,
+                self.buffers.crelu1 as *mut i8,
             );
             self.output.run(
-                self.outputs.crelu1 as *const i8,
-                self.outputs.output as *mut i32,
+                self.buffers.crelu1 as *const i8,
+                self.buffers.output as *mut i32,
             );
-            (self.outputs.output as *mut i32).read() as f32 / WEIGHT_SCALE as f32
+            (self.buffers.output as *mut i32).read() as f32 / WEIGHT_SCALE as f32
         }
     }
 }
 
-fn allocate_aligned<T>(size: usize) -> *mut T {
-    unsafe {
-        let layout = Layout::from_size_align(size, 64).unwrap();
-        let ptr = std::alloc::alloc_zeroed(layout);
-        if ptr.is_null() {
-            handle_alloc_error(layout);
-        }
-        ptr as *mut T
-    }
+struct Buffers {
+    input: *mut [i8],
+    linear0: *mut [i32],
+    crelu0: *mut [i8],
+    linear1: *mut [i32],
+    crelu1: *mut [i8],
+    output: *mut [i32],
 }
 
-fn allocate_aligned_slice<T>(size: usize) -> *mut [T] {
-    unsafe {
-        let layout = Layout::from_size_align(size, 64).unwrap();
-        let ptr = std::alloc::alloc_zeroed(layout);
-        if ptr.is_null() {
-            handle_alloc_error(layout);
+impl Buffers {
+    fn clear(&self) {
+        unsafe {
+            (self.input as *mut i8).write_bytes(0, self.input.len());
+            (self.linear0 as *mut i32).write_bytes(0, self.linear0.len());
+            (self.crelu0 as *mut i8).write_bytes(0, self.crelu0.len());
+            (self.linear1 as *mut i32).write_bytes(0, self.linear1.len());
+            (self.crelu1 as *mut i8).write_bytes(0, self.crelu1.len());
+            (self.output as *mut i32).write_bytes(0, self.output.len());
         }
-        slice_from_raw_parts_mut(ptr as *mut T, size / size_of::<T>())
     }
 }
 
@@ -161,8 +152,8 @@ impl LinearLayer {
         let padding_rows = padded_num_out - num_out;
         let padding_cols = padded_num_in - num_in;
 
-        let weights_buffer: *mut i8 = allocate_aligned(padded_num_in * padded_num_out);
-        let bias_buffer: *mut i32 = allocate_aligned(size_of::<i32>() * padded_num_out);
+        let weights_buffer: *mut i8 = utils::allocate_aligned(padded_num_in * padded_num_out);
+        let bias_buffer: *mut i32 = utils::allocate_aligned(size_of::<i32>() * padded_num_out);
 
         let weights: Vec<i8> = (weights * WEIGHT_SCALE)
             .pad(
@@ -224,6 +215,7 @@ impl LinearLayer {
                     let w1 = _mm256_load_si256(weights.add(offset1 + j));
                     let w2 = _mm256_load_si256(weights.add(offset2 + j));
                     let w3 = _mm256_load_si256(weights.add(offset3 + j));
+
                     sum0 = _mm256_dpbusd_epi32(sum0, batch, w0);
                     sum1 = _mm256_dpbusd_epi32(sum1, batch, w1);
                     sum2 = _mm256_dpbusd_epi32(sum2, batch, w2);
@@ -232,11 +224,31 @@ impl LinearLayer {
 
                 let bias = _mm_load_si128(bias.add(i));
 
-                let outval = m256_haddx4(sum0, sum1, sum2, sum3, bias);
+                let outval = Self::m256_haddx4(sum0, sum1, sum2, sum3, bias);
                 let outval = _mm_srai_epi32::<WEIGHT_SCALE_LOG2>(outval);
 
                 _mm_store_si128(output.add(i), outval);
             }
+        }
+    }
+
+    fn m256_haddx4(
+        sum0: __m256i,
+        sum1: __m256i,
+        sum2: __m256i,
+        sum3: __m256i,
+        bias: __m128i,
+    ) -> __m128i {
+        unsafe {
+            let sum0 = _mm256_hadd_epi32(sum0, sum1);
+            let sum2 = _mm256_hadd_epi32(sum2, sum3);
+
+            let sum0 = _mm256_hadd_epi32(sum0, sum2);
+
+            let sum128lo = _mm256_castsi256_si128(sum0);
+            let sum128hi = _mm256_extracti128_si256::<1>(sum0);
+
+            _mm_add_epi32(_mm_add_epi32(sum128lo, sum128hi), bias)
         }
     }
 }
@@ -277,22 +289,56 @@ impl CReLU {
     }
 }
 
-fn m256_haddx4(
-    sum0: __m256i,
-    sum1: __m256i,
-    sum2: __m256i,
-    sum3: __m256i,
-    bias: __m128i,
-) -> __m128i {
-    unsafe {
-        let sum0 = _mm256_hadd_epi32(sum0, sum1);
-        let sum2 = _mm256_hadd_epi32(sum2, sum3);
+mod utils {
+    use std::{
+        alloc::{Layout, handle_alloc_error},
+        fmt::Display,
+        ptr::slice_from_raw_parts_mut,
+    };
 
-        let sum0 = _mm256_hadd_epi32(sum0, sum2);
+    pub fn allocate_aligned<T>(size: usize) -> *mut T {
+        unsafe {
+            let layout = Layout::from_size_align(size, 64).unwrap();
+            let ptr = std::alloc::alloc_zeroed(layout);
+            if ptr.is_null() {
+                handle_alloc_error(layout);
+            }
+            ptr as *mut T
+        }
+    }
 
-        let sum128lo = _mm256_castsi256_si128(sum0);
-        let sum128hi = _mm256_extracti128_si256::<1>(sum0);
+    pub fn allocate_aligned_slice<T>(size: usize) -> *mut [T] {
+        unsafe {
+            let layout = Layout::from_size_align(size, 64).unwrap();
+            let ptr = std::alloc::alloc_zeroed(layout);
+            if ptr.is_null() {
+                handle_alloc_error(layout);
+            }
+            slice_from_raw_parts_mut(ptr as *mut T, size / size_of::<T>())
+        }
+    }
 
-        _mm_add_epi32(_mm_add_epi32(sum128lo, sum128hi), bias)
+    #[allow(dead_code)]
+    pub unsafe fn print_slice<T: Display>(ptr: *const [T], limit: usize) {
+        unsafe {
+            let len = ptr.len();
+            let data = ptr as *const T;
+            for i in 0..std::cmp::min(len, limit) {
+                print!("{} ", *data.add(i));
+            }
+            print!("(len {})", std::cmp::min(len, limit));
+            println!();
+        }
+    }
+
+    #[allow(dead_code)]
+    pub unsafe fn print_ptr<T: Display>(ptr: *const T, limit: usize) {
+        unsafe {
+            for i in 0..limit {
+                print!("{} ", *ptr.add(i));
+            }
+            print!("(len {})", limit);
+            println!();
+        }
     }
 }

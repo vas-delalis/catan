@@ -4,7 +4,9 @@ mod quantization;
 mod training;
 
 pub use model::{Model, vanilla};
-pub use quantization::QuantizedEvaluator;
+pub use quantization::{
+    ACTIVATION_SCALE, QuantizedEvaluator, QuantizedImage, allocate_aligned_slice,
+};
 use serde::{Deserialize, Serialize};
 pub use training::train;
 
