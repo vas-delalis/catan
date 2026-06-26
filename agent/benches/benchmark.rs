@@ -8,7 +8,7 @@ use agent::{
 };
 use agent::{
     agents::Evaluator,
-    games::{Cell, TicTacToe, TicTacToePlayer},
+    games::tic_tac_toe::{self, TicTacToe},
     ml::{Model, QuantizedEvaluator},
 };
 use common::GameState;
@@ -54,6 +54,7 @@ fn mcts(c: &mut Criterion) {
 }
 
 fn tic_tac_toe_game() -> TicTacToe {
+    use tic_tac_toe::Cell;
     let mut game = TicTacToe::new();
     game.apply_action(Cell(0)); // X O X
     game.apply_action(Cell(1)); // X O X
@@ -67,20 +68,30 @@ fn tic_tac_toe_game() -> TicTacToe {
 }
 
 fn inference(c: &mut Criterion) {
-    let game = tic_tac_toe_game();
-
-    let (model, _) =
-        Model::load::<TicTacToe>(&PathBuf::from("./models/TicTacToe/3.safetensors")).unwrap();
-    let quantized_evaluator = QuantizedEvaluator::new(&model);
-
     let mut group = c.benchmark_group("inference");
-    group.throughput(criterion::Throughput::Elements(1));
-    group.bench_function("float", |b| {
-        b.iter(|| model.evaluate(black_box(&game), TicTacToePlayer::X))
-    });
-    group.bench_function("quantized", |b| {
-        b.iter(|| quantized_evaluator.evaluate(black_box(&game), TicTacToePlayer::X))
-    });
+    let game = tic_tac_toe_game();
+    let player = tic_tac_toe::Player::X;
+
+    for (id, hidden_dim) in [(3, 4), (5, 8), (6, 16)] {
+        let (model, _) = Model::load::<TicTacToe>(&PathBuf::from(format!(
+            "./models/TicTacToe/{}.safetensors",
+            id
+        )))
+        .unwrap();
+        let quantized_evaluator = QuantizedEvaluator::new(&model);
+
+        group.throughput(criterion::Throughput::Elements(1));
+        group.bench_with_input(
+            BenchmarkId::new("float", hidden_dim),
+            &hidden_dim,
+            |b, _| b.iter(|| model.evaluate(black_box(&game), player)),
+        );
+        group.bench_with_input(
+            BenchmarkId::new("quantized", hidden_dim),
+            &hidden_dim,
+            |b, _| b.iter(|| quantized_evaluator.evaluate(black_box(&game), player)),
+        );
+    }
 }
 
 criterion_group!(benches, dots_and_boxes, mcts, inference,);

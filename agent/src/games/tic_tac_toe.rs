@@ -1,6 +1,6 @@
 use std::fmt;
 
-use common::{Image, Outcome, Player};
+use common::{Image, Outcome, Player as PlayerTrait};
 use tch::Tensor;
 
 use crate::{
@@ -9,19 +9,19 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TicTacToePlayer {
+pub enum Player {
     X,
     O,
 }
 
-impl Player for TicTacToePlayer {
+impl PlayerTrait for Player {
     const LEN: usize = 2;
-    fn list() -> Vec<TicTacToePlayer> {
-        vec![TicTacToePlayer::X, TicTacToePlayer::O]
+    fn list() -> Vec<Player> {
+        vec![Player::X, Player::O]
     }
 }
 
-impl Into<usize> for TicTacToePlayer {
+impl Into<usize> for Player {
     fn into(self) -> usize {
         self as usize
     }
@@ -44,12 +44,12 @@ impl From<usize> for Cell {
 
 #[derive(Debug, Clone)]
 pub struct TicTacToe {
-    pub board: [Option<TicTacToePlayer>; 9],
-    current_player: TicTacToePlayer,
+    pub board: [Option<Player>; 9],
+    current_player: Player,
 }
 
 impl TicTacToe {
-    pub fn check_winner(&self) -> Option<TicTacToePlayer> {
+    pub fn check_winner(&self) -> Option<Player> {
         let lines = [
             [0, 1, 2],
             [3, 4, 5],
@@ -75,7 +75,7 @@ impl TicTacToe {
 
 impl GameState for TicTacToe {
     type Action = Cell;
-    type Player = TicTacToePlayer;
+    type Player = Player;
 
     fn name() -> String {
         String::from("TicTacToe")
@@ -84,11 +84,11 @@ impl GameState for TicTacToe {
     fn new() -> Self {
         TicTacToe {
             board: [None; 9],
-            current_player: TicTacToePlayer::X,
+            current_player: Player::X,
         }
     }
 
-    fn get_actions(&self, _player: TicTacToePlayer) -> (Vec<Cell>, Option<Vec<f64>>) {
+    fn get_actions(&self, _player: Player) -> (Vec<Cell>, Option<Vec<f64>>) {
         (
             self.board
                 .iter()
@@ -99,20 +99,20 @@ impl GameState for TicTacToe {
         )
     }
 
-    fn current_player(&self) -> TicTacToePlayer {
+    fn current_player(&self) -> Player {
         self.current_player
     }
 
     fn apply_action(&mut self, mv: Cell) {
         self.board[mv.0 as usize] = Some(self.current_player);
-        self.current_player = if self.current_player == TicTacToePlayer::X {
-            TicTacToePlayer::O
+        self.current_player = if self.current_player == Player::X {
+            Player::O
         } else {
-            TicTacToePlayer::X
+            Player::X
         };
     }
 
-    fn outcome(&self, player: TicTacToePlayer) -> Option<(Outcome, f32)> {
+    fn outcome(&self, player: Player) -> Option<(Outcome, f32)> {
         if self.is_terminal() {
             if let Some(winner) = self.check_winner() {
                 if winner == player {
@@ -145,8 +145,8 @@ impl fmt::Display for TicTacToe {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, cell) in self.board.iter().enumerate() {
             let c = match cell {
-                Some(TicTacToePlayer::X) => 'X',
-                Some(TicTacToePlayer::O) => 'O',
+                Some(Player::X) => 'X',
+                Some(Player::O) => 'O',
                 None => '.',
             };
             write!(f, "{}", c)?;
@@ -168,7 +168,7 @@ impl Image for TicTacToe {
         for tile in self.board {
             match tile {
                 Some(p) => {
-                    if p == TicTacToePlayer::X {
+                    if p == Player::X {
                         exes.push(1.0);
                         ohs.push(0.0);
                     } else {
@@ -183,12 +183,12 @@ impl Image for TicTacToe {
             }
         }
 
-        let curr: Vec<f32> = if self.current_player() == TicTacToePlayer::X {
+        let curr: Vec<f32> = if self.current_player() == Player::X {
             vec![1.0]
         } else {
             vec![0.0]
         };
-        let arb: Vec<f32> = if arbiter == TicTacToePlayer::X {
+        let arb: Vec<f32> = if arbiter == Player::X {
             vec![1.0]
         } else {
             vec![0.0]
@@ -237,15 +237,15 @@ impl Optimal {
     const CORNERS: [usize; 4] = [0, 2, 6, 8];
     const SIDES: [usize; 4] = [1, 3, 5, 7];
 
-    fn other(player: TicTacToePlayer) -> TicTacToePlayer {
+    fn other(player: Player) -> Player {
         match player {
-            TicTacToePlayer::X => TicTacToePlayer::O,
-            TicTacToePlayer::O => TicTacToePlayer::X,
+            Player::X => Player::O,
+            Player::O => Player::X,
         }
     }
 
     // Returns distinct cells that would complete a win for `player` in the given board.
-    fn threat_cells(board: &[Option<TicTacToePlayer>; 9], player: TicTacToePlayer) -> Vec<usize> {
+    fn threat_cells(board: &[Option<Player>; 9], player: Player) -> Vec<usize> {
         let mut cells: Vec<usize> = vec![];
         for line in &Self::LINES {
             let marks = line.iter().filter(|&&i| board[i] == Some(player)).count();
@@ -265,7 +265,7 @@ impl Optimal {
     }
 
     // Returns cells where placing `player` would create two simultaneous threats (a fork).
-    fn fork_moves(board: &[Option<TicTacToePlayer>; 9], player: TicTacToePlayer) -> Vec<usize> {
+    fn fork_moves(board: &[Option<Player>; 9], player: Player) -> Vec<usize> {
         (0..9)
             .filter(|&cell| {
                 if board[cell].is_some() {
@@ -402,9 +402,9 @@ mod tests {
                 let action = luck.get_action(game.clone());
                 game.apply_action(action);
 
-                let normal = Image::image(&game, TicTacToePlayer::X);
+                let normal = Image::image(&game, Player::X);
                 let quantized: *mut [i8] = allocate_aligned_slice(32);
-                QuantizedImage::image(&game, quantized as *mut i8, TicTacToePlayer::X);
+                QuantizedImage::image(&game, quantized as *mut i8, Player::X);
 
                 for i in 0..<TicTacToe as QuantizedImage>::IMAGE_SIZE {
                     let a: i8 = (normal.i(i as i64) * 64).try_into().unwrap();

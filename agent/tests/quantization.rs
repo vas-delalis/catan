@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use agent::{
     Agent,
     agents::{Evaluator, Random},
-    games::{DotsAndBoxes, TicTacToe, TicTacToePlayer},
+    games::{
+        DotsAndBoxes,
+        tic_tac_toe::{self, TicTacToe},
+    },
     ml::{Model, QuantizedEvaluator},
 };
 use common::{GameState, Player};
@@ -23,8 +26,8 @@ fn error_is_within_margin() {
             let action = luck.get_action(game.clone());
             game.apply_action(action);
 
-            let error = quant.evaluate(&game, TicTacToePlayer::X)
-                - model.evaluate(&game, TicTacToePlayer::X);
+            let error = quant.evaluate(&game, tic_tac_toe::Player::X)
+                - model.evaluate(&game, tic_tac_toe::Player::X);
 
             errors.push(error);
             if error.abs() > max_error {
