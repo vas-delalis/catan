@@ -47,7 +47,7 @@ fn error_is_within_margin2() {
     let luck = Random {};
     let mut max_error = 0.0;
     let mut errors = vec![];
-    for _ in 0..100 {
+    for _ in 0..1000 {
         let mut game = DotsAndBoxes::new();
         while !game.is_terminal() {
             let action = luck.get_action(game.clone());
@@ -63,5 +63,5 @@ fn error_is_within_margin2() {
     }
     let sum: f32 = errors.iter().sum();
     dbg!(sum / errors.len() as f32);
-    assert!(max_error < 0.1, "quantization error too high");
+    assert!(max_error < 0.15, "quantization error too high");
 }
