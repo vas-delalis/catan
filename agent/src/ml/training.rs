@@ -16,7 +16,7 @@ use tch::{
     nn::{self, OptimizerConfig},
 };
 
-pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
+pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
     let model_config = config.model_config.clone();
     let params = config.hyperparameters.clone();
 
@@ -100,6 +100,7 @@ pub fn train<G: GameState + Image + Send>(config: TrainingConfig) {
             train_loss += loss;
         }
 
+        config.hyperparameters.epochs = epoch;
         print!(
             "[Epoch {}] Train: {:.3} / ",
             epoch,
