@@ -1,0 +1,6 @@
+Differences between this implementation of Catan and the official rule book:
+
+- Trade between players is not allowed
+- Players may not play dev. cards before rolling
+- Can only use the starting map for beginners
+- ???
