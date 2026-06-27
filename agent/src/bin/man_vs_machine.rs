@@ -23,12 +23,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     agent::with_game!(game_name.as_str() => G {
         let mut path: PathBuf = ["./models", &G::name(), &model_id.to_string()].iter().collect();
         path.set_extension("safetensors");
-        let (model, _) = Model::load::<G>(&path).unwrap();
+        let (model, _) = Model::load(&path).unwrap();
 
         let luck: Box<dyn Agent<G>> = Box::new(Random {});
         let mut agents: Vec<Box<dyn Agent<G>>> = Vec::new();
+        agents.push(Box::new(Search::new(&model, 100, true, 1.41, 1.0, 0.01)));
         agents.push(Box::new(Human {}));
-        agents.push(Box::new(Search::new(&model, 1000, true, 1.41, 1.0, 0.01)));
         // Fill remaining slots
         for _ in 2..<G as GameState>::Player::LEN {
             agents.push(Box::new(Random {}));

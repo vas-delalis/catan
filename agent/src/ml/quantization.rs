@@ -1,6 +1,10 @@
-use std::{arch::x86_64::*, marker::PhantomData};
+use std::{
+    alloc::{Layout, dealloc},
+    arch::x86_64::*,
+    marker::PhantomData,
+};
 
-use common::GameState;
+use common::{GameState, Image};
 use tch::Tensor;
 
 use crate::{agents::Evaluator, ml::Model};
@@ -15,24 +19,19 @@ const OUTPUT_SCALE: i64 = 64;
 /// Size of a 256-bit register in bytes.
 const REGISTER_WIDTH: usize = 256 / (size_of::<i8>() * 8);
 
-pub trait QuantizedImage: GameState {
-    const IMAGE_SIZE: usize;
-    fn image(&self, buffer: *mut i8, perspective: Self::Player);
-}
-
 /// Significantly accelerates a [Model]'s inference by quantizing its parameters.
-pub struct QuantizedEvaluator<G: QuantizedImage> {
+pub struct QuantizedEvaluator<T: Image> {
     linear0: LinearLayer,
     crelu0: CReLU,
     linear1: LinearLayer,
     crelu1: CReLU,
     output: LinearLayer,
     buffers: Buffers,
-    _game: PhantomData<G>,
+    _game: PhantomData<T>,
 }
 
-impl<G: QuantizedImage> QuantizedEvaluator<G> {
-    pub fn new(model: &Model) -> Self {
+impl<T: Image> QuantizedEvaluator<T> {
+    pub fn new(model: &Model<T>) -> Self {
         assert!(
             !model.var_store().variables().contains_key("layer2.weight"),
             "QuantizedEvaluator only supports models with 2 hidden layers."
@@ -58,7 +57,7 @@ impl<G: QuantizedImage> QuantizedEvaluator<G> {
         );
 
         let buffers = Buffers {
-            input: allocate_aligned_slice(G::IMAGE_SIZE.next_multiple_of(32) * size_of::<i8>()),
+            input: allocate_aligned_slice(T::IMAGE_SIZE.next_multiple_of(32) * size_of::<i8>()),
             linear0: allocate_aligned_slice(
                 linear0.padded_num_out.next_multiple_of(32) * size_of::<i32>(),
             ),
@@ -82,10 +81,10 @@ impl<G: QuantizedImage> QuantizedEvaluator<G> {
     }
 }
 
-impl<G: GameState + QuantizedImage> Evaluator<G> for QuantizedEvaluator<G> {
-    fn evaluate(&self, game_state: &G, perspective: G::Player) -> f32 {
+impl<T: GameState + Image> Evaluator<T> for QuantizedEvaluator<T> {
+    fn evaluate(&self, game_state: &T, perspective: T::Player) -> f32 {
         self.buffers.clear();
-        QuantizedImage::image(game_state, self.buffers.input as *mut i8, perspective);
+        game_state.quantized_image(self.buffers.input as *mut i8, perspective);
 
         unsafe {
             self.linear0.run(
@@ -131,6 +130,37 @@ impl Buffers {
             (self.linear1 as *mut i32).write_bytes(0, self.linear1.len());
             (self.crelu1 as *mut i8).write_bytes(0, self.crelu1.len());
             (self.output as *mut i32).write_bytes(0, self.output.len());
+        }
+    }
+}
+
+impl Drop for Buffers {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(
+                self.input as *mut u8,
+                Layout::from_size_align(self.input.len() * size_of::<i8>(), 64).unwrap(),
+            );
+            dealloc(
+                self.linear0 as *mut u8,
+                Layout::from_size_align(self.linear0.len() * size_of::<i32>(), 64).unwrap(),
+            );
+            dealloc(
+                self.crelu0 as *mut u8,
+                Layout::from_size_align(self.crelu0.len() * size_of::<i8>(), 64).unwrap(),
+            );
+            dealloc(
+                self.linear1 as *mut u8,
+                Layout::from_size_align(self.linear1.len() * size_of::<i32>(), 64).unwrap(),
+            );
+            dealloc(
+                self.crelu1 as *mut u8,
+                Layout::from_size_align(self.crelu1.len() * size_of::<i8>(), 64).unwrap(),
+            );
+            dealloc(
+                self.output as *mut u8,
+                Layout::from_size_align(self.output.len() * size_of::<i32>(), 64).unwrap(),
+            );
         }
     }
 }
@@ -253,6 +283,21 @@ impl LinearLayer {
     }
 }
 
+impl Drop for LinearLayer {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(
+                self.weights as *mut u8,
+                Layout::from_size_align(self.padded_num_in * self.padded_num_out, 64).unwrap(),
+            );
+            dealloc(
+                self.bias as *mut u8,
+                Layout::from_size_align(size_of::<i32>() * self.padded_num_out, 64).unwrap(),
+            );
+        }
+    }
+}
+
 struct CReLU {
     num_out_chunks: usize,
 }
@@ -291,7 +336,7 @@ impl CReLU {
 
 mod utils {
     use std::{
-        alloc::{Layout, handle_alloc_error},
+        alloc::{Layout, alloc_zeroed, handle_alloc_error},
         fmt::Display,
         ptr::slice_from_raw_parts_mut,
     };
@@ -299,7 +344,7 @@ mod utils {
     pub fn allocate_aligned<T>(size: usize) -> *mut T {
         unsafe {
             let layout = Layout::from_size_align(size, 64).unwrap();
-            let ptr = std::alloc::alloc_zeroed(layout);
+            let ptr = alloc_zeroed(layout);
             if ptr.is_null() {
                 handle_alloc_error(layout);
             }
@@ -310,7 +355,7 @@ mod utils {
     pub fn allocate_aligned_slice<T>(size: usize) -> *mut [T] {
         unsafe {
             let layout = Layout::from_size_align(size, 64).unwrap();
-            let ptr = std::alloc::alloc_zeroed(layout);
+            let ptr = alloc_zeroed(layout);
             if ptr.is_null() {
                 handle_alloc_error(layout);
             }

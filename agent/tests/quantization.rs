@@ -13,8 +13,7 @@ use common::{GameState, Player};
 
 #[test]
 fn error_is_within_margin() {
-    let (model, _) =
-        Model::load::<TicTacToe>(&PathBuf::from("./models/TicTacToe/7.safetensors")).unwrap();
+    let (model, _) = Model::load(&PathBuf::from("./models/TicTacToe/7.safetensors")).unwrap();
     let quant = QuantizedEvaluator::new(&model);
 
     let luck = Random {};
@@ -43,8 +42,7 @@ fn error_is_within_margin() {
 #[test]
 fn error_is_within_margin2() {
     let (model, _) =
-        Model::load::<DotsAndBoxes>(&PathBuf::from("./models/DotsAndBoxes5x5/11.safetensors"))
-            .unwrap();
+        Model::load(&PathBuf::from("./models/DotsAndBoxes5x5/11.safetensors")).unwrap();
     let quant = QuantizedEvaluator::new(&model);
     let player = <DotsAndBoxes as GameState>::Player::list()[0];
     let luck = Random {};

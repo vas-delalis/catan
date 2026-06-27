@@ -21,7 +21,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
     let params = config.hyperparameters.clone();
 
     let arch = vanilla::<G>(model_config.layers, model_config.hidden_dim);
-    let model = Model::new::<G>(arch);
+    let model = Model::new(arch);
     let mut optimizer = nn::Adam::default()
         .build(model.var_store(), params.learning_rate)
         .unwrap();
@@ -64,8 +64,8 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
     let start = Instant::now();
 
     for epoch in 1..=params.epochs {
-        dataset_train.self_play(&agent, &params, default_threads());
-        dataset_test.self_play(&agent, &params, default_threads());
+        dataset_train.self_play(&model, &params, default_threads());
+        dataset_test.self_play(&model, &params, default_threads());
 
         // Train
         let mut train_loss = 0.0;
@@ -75,7 +75,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
             let mut targets = Vec::with_capacity(params.batch_size * G::Player::LEN);
             for (state, values) in batch {
                 for (&arbiter, &value) in G::Player::list().iter().zip(values.iter()) {
-                    let x = state.image(arbiter);
+                    let x = state.tensor_image(arbiter);
                     let y = Tensor::from(value);
                     images.push(x);
                     targets.push(y);
@@ -112,7 +112,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
         let mut test_losses = vec![];
         for (state, values) in dataset_test.drain() {
             for (&arbiter, &value) in G::Player::list().iter().zip(values.iter()) {
-                let x = state.image(arbiter);
+                let x = state.tensor_image(arbiter);
                 let y = Tensor::from(value);
                 let loss = model.infer(x).mse_loss(&y, tch::Reduction::Sum);
                 let loss: f32 = loss.try_into().unwrap();

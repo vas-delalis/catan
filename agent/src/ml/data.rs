@@ -1,8 +1,12 @@
-use common::{GameState, Player};
+use common::{GameState, Image, Player};
 use rand::seq::SliceRandom;
 use tch::no_grad_guard;
 
-use crate::{Agent, agents::Random, ml::Hyperparameters};
+use crate::{
+    Agent,
+    agents::{Random, Search},
+    ml::{Hyperparameters, Model, QuantizedEvaluator},
+};
 
 type Snapshot<G> = (G, Vec<f32>);
 
@@ -11,7 +15,7 @@ pub struct Dataset<G: GameState> {
     replay_count: usize,
 }
 
-impl<G: GameState> Dataset<G> {
+impl<G: GameState + Image> Dataset<G> {
     pub fn new(replay_count: usize) -> Self {
         Dataset {
             replay_buffer: Vec::with_capacity(replay_count),
@@ -27,13 +31,7 @@ impl<G: GameState> Dataset<G> {
         self.replay_buffer.drain(0..)
     }
 
-    pub fn self_play<A>(&mut self, agent: &A, params: &Hyperparameters, threads: usize)
-    where
-        A: Agent<G> + Clone + Send,
-        G: Send,
-        G::Action: Send,
-        G::Player: Send,
-    {
+    pub fn self_play(&mut self, model: &Model<G>, params: &Hyperparameters, threads: usize) {
         let _guard = no_grad_guard();
         let replays_per_thread = self.replay_count / threads;
         let remainder = self.replay_count % threads;
@@ -41,7 +39,6 @@ impl<G: GameState> Dataset<G> {
         let results = std::thread::scope(|s| {
             let mut handles = vec![];
             for i in 0..threads {
-                let agent_clone = agent.clone();
                 // Spread out the remainder
                 let count = replays_per_thread + if i < remainder { 1 } else { 0 };
                 if count == 0 {
@@ -49,8 +46,16 @@ impl<G: GameState> Dataset<G> {
                 }
 
                 handles.push(s.spawn(move || {
+                    let quantized_agent = Search::new(
+                        QuantizedEvaluator::new(&model),
+                        params.search_evals,
+                        false,
+                        1.41,
+                        1.0,
+                        params.dirichlet_alpha,
+                    );
                     Self::generate(
-                        agent_clone,
+                        quantized_agent,
                         count,
                         params.self_play_sampling_rate,
                         params.self_play_random_action_chance,
@@ -71,7 +76,7 @@ impl<G: GameState> Dataset<G> {
         self.replay_buffer.shuffle(&mut rand::rng());
     }
 
-    fn generate<A: Agent<G> + Clone + Send>(
+    fn generate<A: Agent<G>>(
         agent: A,
         count: usize,
         sampling_rate: f64,

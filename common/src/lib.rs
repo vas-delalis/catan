@@ -22,8 +22,9 @@ pub trait GameState: Clone + Send {
 }
 
 pub trait Image: GameState {
-    const IMAGE_SIZE: i64;
-    fn image(&self, arbiter: Self::Player) -> Tensor;
+    const IMAGE_SIZE: usize;
+    fn tensor_image(&self, arbiter: Self::Player) -> Tensor;
+    fn quantized_image(&self, buffer: *mut i8, perspective: Self::Player);
 }
 
 pub trait Action: Copy + Debug + Into<usize> + From<usize> + Send {}

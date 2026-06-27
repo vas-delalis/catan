@@ -73,7 +73,7 @@ fn inference(c: &mut Criterion) {
     let player = tic_tac_toe::Player::X;
 
     for (id, hidden_dim) in [(3, 4), (5, 8), (6, 16)] {
-        let (model, _) = Model::load::<TicTacToe>(&PathBuf::from(format!(
+        let (model, _) = Model::load(&PathBuf::from(format!(
             "./models/TicTacToe/{}.safetensors",
             id
         )))

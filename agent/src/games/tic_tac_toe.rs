@@ -3,10 +3,7 @@ use std::fmt;
 use common::{Image, Outcome, Player as PlayerTrait};
 use tch::Tensor;
 
-use crate::{
-    Agent, GameState,
-    ml::{ACTIVATION_SCALE, QuantizedImage},
-};
+use crate::{Agent, GameState, ml::ACTIVATION_SCALE};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Player {
@@ -159,9 +156,9 @@ impl fmt::Display for TicTacToe {
 }
 
 impl Image for TicTacToe {
-    const IMAGE_SIZE: i64 = 20;
+    const IMAGE_SIZE: usize = 20;
 
-    fn image(&self, arbiter: Self::Player) -> tch::Tensor {
+    fn tensor_image(&self, arbiter: Self::Player) -> tch::Tensor {
         let mut exes: Vec<f32> = vec![];
         let mut ohs: Vec<f32> = vec![];
 
@@ -196,12 +193,8 @@ impl Image for TicTacToe {
 
         Tensor::from_slice(&[exes, ohs, curr, arb].concat())
     }
-}
 
-impl QuantizedImage for TicTacToe {
-    const IMAGE_SIZE: usize = 20;
-
-    fn image(&self, buffer: *mut i8, perspective: Self::Player) {
+    fn quantized_image(&self, buffer: *mut i8, perspective: Self::Player) {
         let scale = ACTIVATION_SCALE as i8;
 
         for (i, tile) in self.board.iter().enumerate() {
@@ -388,10 +381,7 @@ mod tests {
     use tch::IndexOp;
 
     use super::*;
-    use crate::{
-        agents::Random,
-        ml::{QuantizedImage, allocate_aligned_slice},
-    };
+    use crate::{agents::Random, ml::allocate_aligned_slice};
 
     #[test]
     fn quantized_image_matches_normal() {
@@ -402,11 +392,11 @@ mod tests {
                 let action = luck.get_action(game.clone());
                 game.apply_action(action);
 
-                let normal = Image::image(&game, Player::X);
+                let normal = Image::tensor_image(&game, Player::X);
                 let quantized: *mut [i8] = allocate_aligned_slice(32);
-                QuantizedImage::image(&game, quantized as *mut i8, Player::X);
+                game.quantized_image(quantized as *mut i8, Player::X);
 
-                for i in 0..<TicTacToe as QuantizedImage>::IMAGE_SIZE {
+                for i in 0..TicTacToe::IMAGE_SIZE {
                     let a: i8 = (normal.i(i as i64) * 64).try_into().unwrap();
                     assert_eq!(a, unsafe { (quantized as *mut i8).add(i as usize).read() })
                 }

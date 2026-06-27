@@ -109,9 +109,9 @@ impl Display for Pig {
 }
 
 impl Image for Pig {
-    const IMAGE_SIZE: i64 = 5;
+    const IMAGE_SIZE: usize = 5;
 
-    fn image(&self, arbiter: PigPlayer) -> Tensor {
+    fn tensor_image(&self, arbiter: PigPlayer) -> Tensor {
         Tensor::from_slice(&[
             self.scores[0] as f32 / WIN_SCORE as f32,
             self.scores[1] as f32 / WIN_SCORE as f32,
@@ -123,6 +123,10 @@ impl Image for Pig {
             },
             if arbiter == PigPlayer::P1 { 1.0 } else { 0.0 },
         ])
+    }
+
+    fn quantized_image(&self, _buffer: *mut i8, _perspective: Self::Player) {
+        todo!()
     }
 }
 
@@ -223,6 +227,9 @@ mod tests {
 
     #[test]
     fn image_size_is_accurate() {
-        assert_eq!(Pig::new().image(PigPlayer::P1).size()[0], Pig::IMAGE_SIZE)
+        assert_eq!(
+            Pig::new().tensor_image(PigPlayer::P1).size()[0] as usize,
+            Pig::IMAGE_SIZE
+        )
     }
 }

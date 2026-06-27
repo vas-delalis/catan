@@ -1,10 +1,6 @@
 use std::{fmt::Display, sync::LazyLock};
 
-use crate::{
-    GameState,
-    agents::Evaluator,
-    ml::{ACTIVATION_SCALE, QuantizedImage},
-};
+use crate::{GameState, agents::Evaluator, ml::ACTIVATION_SCALE};
 use common::{Image, Outcome, Player as PlayerTrait};
 
 const R: usize = 5;
@@ -186,9 +182,9 @@ impl Display for DotsAndBoxes {
 }
 
 impl Image for DotsAndBoxes {
-    const IMAGE_SIZE: i64 = N_EDGES as i64 + 12;
+    const IMAGE_SIZE: usize = N_EDGES + 12;
 
-    fn image(&self, arbiter: Player) -> tch::Tensor {
+    fn tensor_image(&self, arbiter: Player) -> tch::Tensor {
         use tch::Tensor;
 
         let mut board_image = vec![0f32; N_EDGES];
@@ -212,12 +208,8 @@ impl Image for DotsAndBoxes {
 
         Tensor::from_slice(&[board_image, score, to_play, arbiter_vec].concat())
     }
-}
 
-impl QuantizedImage for DotsAndBoxes {
-    const IMAGE_SIZE: usize = N_EDGES + 12;
-
-    fn image(&self, buffer: *mut i8, perspective: Self::Player) {
+    fn quantized_image(&self, buffer: *mut i8, perspective: Self::Player) {
         let scale = ACTIVATION_SCALE as i8;
 
         let mut idx = buffer.clone();
@@ -395,7 +387,7 @@ mod tests {
     #[test]
     fn quantized_image_matches_normal() {
         let luck = Random {};
-        let image_size = <DotsAndBoxes as QuantizedImage>::IMAGE_SIZE;
+        let image_size = DotsAndBoxes::IMAGE_SIZE;
         let quantized_img: *mut [i8] = allocate_aligned_slice(image_size.next_multiple_of(32));
         for _ in 0..1000 {
             let mut game = DotsAndBoxes::new();
@@ -403,8 +395,8 @@ mod tests {
                 let action = luck.get_action(game.clone());
                 game.apply_action(action);
 
-                let normal_img = Image::image(&game, Player::A);
-                QuantizedImage::image(&game, quantized_img as *mut i8, Player::A);
+                let normal_img = Image::tensor_image(&game, Player::A);
+                game.quantized_image(quantized_img as *mut i8, Player::A);
 
                 for i in 0..image_size {
                     let a: i8 = (normal_img.i(i as i64) * 64).try_into().unwrap();
@@ -419,7 +411,7 @@ mod tests {
     #[test]
     fn quantized_image_non_negative() {
         let luck = Random {};
-        let image_size = <DotsAndBoxes as QuantizedImage>::IMAGE_SIZE;
+        let image_size = DotsAndBoxes::IMAGE_SIZE;
         let img: *mut [i8] = allocate_aligned_slice(image_size.next_multiple_of(32));
         for _ in 0..1000 {
             let mut game = DotsAndBoxes::new();
@@ -427,7 +419,7 @@ mod tests {
                 let action = luck.get_action(game.clone());
                 game.apply_action(action);
 
-                QuantizedImage::image(&game, img as *mut i8, Player::A);
+                game.quantized_image(img as *mut i8, Player::A);
 
                 for i in 0..image_size {
                     let value = unsafe { (img as *mut i8).add(i as usize).read() };

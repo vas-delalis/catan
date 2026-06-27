@@ -1,4 +1,4 @@
-use std::{error::Error, path::Path as FSPath};
+use std::{error::Error, marker::PhantomData, path::Path as FSPath};
 
 use tch::{
     Tensor,
@@ -12,9 +12,10 @@ use crate::{
 };
 use common::Image;
 
-pub struct Model {
+pub struct Model<G: GameState + Image> {
     layers: Sequential,
     vs: VarStore,
+    _game: PhantomData<G>,
 }
 
 pub type CreateLayers = Box<dyn FnOnce(&VSPath) -> Sequential>;
@@ -25,7 +26,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
         let mut seq = nn::seq()
             .add(nn::linear(
                 root.clone() / "layer0",
-                G::IMAGE_SIZE,
+                G::IMAGE_SIZE as i64,
                 hidden,
                 Default::default(),
             ))
@@ -52,20 +53,19 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
     })
 }
 
-impl Model {
-    pub fn new<G: Image>(create_layers: CreateLayers) -> Self {
+impl<G: GameState + Image> Model<G> {
+    pub fn new(create_layers: CreateLayers) -> Self {
         let device = tch::Device::Cpu;
         let vs = VarStore::new(device);
         let root = vs.root();
         Model {
             layers: create_layers(&root),
             vs,
+            _game: PhantomData,
         }
     }
 
-    pub fn load<G: GameState + Image>(
-        path: &FSPath,
-    ) -> Result<(Self, TrainingConfig), Box<dyn Error>> {
+    pub fn load(path: &FSPath) -> Result<(Self, TrainingConfig), Box<dyn Error>> {
         let config_path = path.with_extension("json");
         let config_json = std::fs::read_to_string(config_path)?;
         let config: TrainingConfig = serde_json::from_str(&config_json)?;
@@ -79,6 +79,7 @@ impl Model {
         let mut model = Model {
             layers: create_layers(&root),
             vs,
+            _game: PhantomData,
         };
         model.vs.load(path)?;
 
@@ -119,11 +120,11 @@ impl Model {
 // (with no gradients) or a mutable reference for training (with gradients enabled).
 // Less ideally, we'd find a way to safely implement this ourselves.
 // For now, `unsafe` works.
-unsafe impl Sync for Model {}
+unsafe impl<G: GameState + Image> Sync for Model<G> {}
 
-impl<G: GameState + Image> Evaluator<G> for Model {
+impl<G: GameState + Image> Evaluator<G> for Model<G> {
     fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
-        let image = game_state.image(arbiter);
+        let image = game_state.tensor_image(arbiter);
         self.infer(image).try_into().unwrap()
     }
 }

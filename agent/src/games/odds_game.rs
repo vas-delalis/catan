@@ -114,15 +114,19 @@ impl Display for OddsGame {
 }
 
 impl Image for OddsGame {
-    const IMAGE_SIZE: i64 = 4;
+    const IMAGE_SIZE: usize = 4;
 
-    fn image(&self, arbiter: OddsGamePlayer) -> tch::Tensor {
+    fn tensor_image(&self, arbiter: OddsGamePlayer) -> tch::Tensor {
         Tensor::from_slice(&[
             self.w as f32 / denom(self.w, self.l) as f32,
             self.l as f32 / denom(self.w, self.l) as f32,
             if self.current_player() == A { 1.0 } else { 0.0 },
             if arbiter == A { 1.0 } else { 0.0 },
         ])
+    }
+
+    fn quantized_image(&self, _buffer: *mut i8, _perspective: Self::Player) {
+        todo!()
     }
 }
 
