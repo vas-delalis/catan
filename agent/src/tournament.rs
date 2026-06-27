@@ -73,6 +73,7 @@ struct Participant<'a, G> {
     draws: usize,
     losses: usize,
     evaluate: bool,
+    game_clock: Duration,
 }
 
 impl<'a, G> Participant<'a, G> {
@@ -140,6 +141,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
             draws: 0,
             losses: 0,
             evaluate,
+            game_clock: Duration::ZERO,
         });
     }
 
@@ -230,11 +232,13 @@ impl<'a, G: GameState> Tournament<'a, G> {
                     .position(|&i| i == state.current_player())
                     .unwrap();
 
-                let agent = &self.roster[agents[idx]].agent;
                 let action = if state.is_random() {
                     luck.get_action(state.clone())
                 } else {
-                    agent.get_action(state.clone())
+                    let t = Instant::now();
+                    let action = self.roster[agents[idx]].agent.get_action(state.clone());
+                    self.roster[agents[idx]].game_clock += t.elapsed();
+                    action
                 };
 
                 state.apply_action(action);
@@ -288,7 +292,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
                             TestResult::H1 => "✅",
                         };
                         println!(
-                            "{:<12} {} {:>12}",
+                            "{:<15} {} {:>15}",
                             self.roster[id1].name, symbol, self.roster[id2].name
                         );
                     }
@@ -330,13 +334,14 @@ impl<'a, G: GameState> Tournament<'a, G> {
         println!();
         for agent in &self.roster {
             println!(
-                "{:<12} WR: {:>3.0}% | Rating: {:>4.0} | {}/{}/{}",
+                "{:<12} WR: {:>3.0}% | Rating: {:>4.0} | {}/{}/{} | Time: {:.1}s",
                 agent.name,
                 agent.winrate() * 100.0,
                 agent.rating,
                 agent.wins,
                 agent.draws,
-                agent.losses
+                agent.losses,
+                agent.game_clock.as_secs_f64(),
             )
         }
     }
