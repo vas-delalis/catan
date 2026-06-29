@@ -1,6 +1,5 @@
-use std::path::PathBuf;
 use std::time::Duration;
-use std::{fs, time::Instant};
+use std::time::Instant;
 
 use crate::ml::TrainingConfig;
 use crate::ml::quantization::CLAMP_LIMIT;
@@ -55,12 +54,12 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
     tournament.play();
     tournament.leaderboard();
 
-    println!("Training {} parameters...", model.parameter_count());
-
-    let save_path = get_save_path(&G::name());
+    let id = Model::<G>::get_next_id();
 
     let mut dataset_train = Dataset::new(params.train_replays);
     let mut dataset_test = Dataset::new(params.test_replays);
+
+    println!("Training {} parameters...", model.parameter_count());
     let start = Instant::now();
 
     for epoch in 1..=params.epochs {
@@ -126,12 +125,8 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
 
         // Save periodically
         if epoch % 100 == 0 && epoch < params.epochs {
-            let checkpoint_path = save_path.with_file_name(format!(
-                "{}-{}.safetensors",
-                save_path.file_stem().unwrap().to_string_lossy(),
-                epoch,
-            ));
-            model.var_store().save(&checkpoint_path).unwrap();
+            let name = format!("{}-{}", id, epoch);
+            model.save(&name).unwrap();
         }
 
         // Save and quit when interrupted
@@ -140,11 +135,8 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
                 "\r\x1b[KInterrupted at epoch {}. Saving checkpoint...",
                 epoch
             );
-            model.save_with_config(&save_path, &config).unwrap();
-            println!(
-                "Saved as {}",
-                save_path.file_name().unwrap().to_string_lossy()
-            );
+            let (checkpoint_path, _) = model.save_with_config(&id.to_string(), &config).unwrap();
+            println!("Saved at {}", checkpoint_path.to_string_lossy());
             return;
         }
     }
@@ -163,38 +155,11 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
     tournament.play();
     tournament.leaderboard();
 
-    model.save_with_config(&save_path, &config).unwrap();
+    let (checkpoint_path, _) = model.save_with_config(&id.to_string(), &config).unwrap();
     println!(
-        "Saved as {}",
-        &save_path.file_name().unwrap().to_string_lossy()
+        "Saved at {}",
+        &checkpoint_path.file_name().unwrap().to_string_lossy()
     );
-}
-
-fn get_save_path(game_name: &str) -> PathBuf {
-    let mut path = PathBuf::from("./models");
-    path.push(game_name);
-    fs::create_dir_all(&path).unwrap();
-
-    // Get highest id in directory
-    let prev = fs::read_dir(&path)
-        .unwrap()
-        .filter_map(|e| {
-            e.unwrap()
-                .path()
-                .file_prefix()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .parse::<usize>()
-                .ok()
-        })
-        .max();
-    let next = match prev {
-        Some(x) => x + 1,
-        None => 0,
-    };
-    path.push(format!("{}.safetensors", next));
-    path
 }
 
 fn default_threads() -> usize {

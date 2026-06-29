@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use agent::{
     Agent,
     agents::{Evaluator, Random},
@@ -13,7 +11,7 @@ use common::{GameState, Player};
 
 #[test]
 fn error_is_within_margin() {
-    let (model, _) = Model::load(&PathBuf::from("./models/TicTacToe/7.safetensors")).unwrap();
+    let (model, _) = Model::load(7).unwrap();
     let quant = QuantizedEvaluator::new(&model);
 
     let luck = Random {};
@@ -41,8 +39,7 @@ fn error_is_within_margin() {
 
 #[test]
 fn error_is_within_margin2() {
-    let (model, _) =
-        Model::load(&PathBuf::from("./models/DotsAndBoxes5x5/11.safetensors")).unwrap();
+    let (model, _) = Model::load(11).unwrap();
     let quant = QuantizedEvaluator::new(&model);
     let player = <DotsAndBoxes as GameState>::Player::list()[0];
     let luck = Random {};

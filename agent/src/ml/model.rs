@@ -1,4 +1,4 @@
-use std::{error::Error, marker::PhantomData, path::Path as FSPath};
+use std::{error::Error, fs, marker::PhantomData, path::PathBuf};
 
 use tch::{
     Tensor,
@@ -47,6 +47,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
             root.clone() / "output",
             hidden,
             1,
+            // G::Player::LEN as i64,
             Default::default(),
         ));
         seq
@@ -65,9 +66,13 @@ impl<G: GameState + Image> Model<G> {
         }
     }
 
-    pub fn load(path: &FSPath) -> Result<(Self, TrainingConfig), Box<dyn Error>> {
+    pub fn load<T: ToString>(name: T) -> Result<(Self, TrainingConfig), Box<dyn Error>> {
+        let mut path = Self::get_dir();
+        path.push(name.to_string());
+
         let config_path = path.with_extension("json");
-        let config_json = std::fs::read_to_string(config_path)?;
+
+        let config_json = fs::read_to_string(config_path)?;
         let config: TrainingConfig = serde_json::from_str(&config_json)?;
 
         let vs = VarStore::new(tch::Device::Cpu);
@@ -86,16 +91,63 @@ impl<G: GameState + Image> Model<G> {
         Ok((model, config))
     }
 
+    /// Saves the model as a checkpoint–config file pair and returns their paths.
     pub fn save_with_config(
         &self,
-        path: &FSPath,
+        name: &str,
         config: &TrainingConfig,
-    ) -> Result<(), Box<dyn Error>> {
-        self.vs.save(path)?;
+    ) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+        let mut path = Self::get_dir();
+        path.push(name);
+
+        let checkpoint_path = path.with_extension("safetensors");
+        self.vs.save(&checkpoint_path)?;
+
         let config_path = path.with_extension("json");
         let config_json = serde_json::to_string_pretty(config)?;
-        std::fs::write(config_path, config_json)?;
-        Ok(())
+        fs::write(&config_path, config_json)?;
+        Ok((checkpoint_path, config_path))
+    }
+
+    /// Saves the model without its corresponding config. See also `save_with_config()`.
+    pub fn save(&self, name: &str) -> Result<PathBuf, Box<dyn Error>> {
+        let mut path = Self::get_dir();
+        path.push(name);
+
+        let checkpoint_path = path.with_extension("safetensors");
+        self.vs.save(&checkpoint_path)?;
+
+        Ok(checkpoint_path)
+    }
+
+    pub fn get_next_id() -> usize {
+        let dir = Self::get_dir();
+
+        // Get highest id in directory
+        let prev = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| {
+                e.unwrap()
+                    .path()
+                    .file_prefix()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .parse::<usize>()
+                    .ok()
+            })
+            .max();
+        match prev {
+            Some(x) => x + 1,
+            None => 0,
+        }
+    }
+
+    fn get_dir() -> PathBuf {
+        let mut path = model_dir();
+        path.push(&G::name());
+        fs::create_dir_all(&path).unwrap();
+        path
     }
 
     pub fn var_store(&self) -> &VarStore {
@@ -127,4 +179,10 @@ impl<G: GameState + Image> Evaluator<G> for Model<G> {
         let image = game_state.tensor_image(arbiter);
         self.infer(image).try_into().unwrap()
     }
+}
+
+fn model_dir() -> PathBuf {
+    let dirs = directories::ProjectDirs::from("", "vas-delalis", "catan").unwrap();
+    let data_dir = dirs.data_dir();
+    [data_dir, &PathBuf::from("models")].iter().collect()
 }

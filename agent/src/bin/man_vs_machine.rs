@@ -1,5 +1,4 @@
 use std::env;
-use std::path::PathBuf;
 
 use agent::{
     Agent,
@@ -21,9 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _no_grad = tch::no_grad_guard();
 
     agent::with_game!(game_name.as_str() => G {
-        let mut path: PathBuf = ["./models", &G::name(), &model_id.to_string()].iter().collect();
-        path.set_extension("safetensors");
-        let (model, _) = Model::load(&path).unwrap();
+        let (model, _) = Model::load(model_id).unwrap();
 
         let luck: Box<dyn Agent<G>> = Box::new(Random {});
         let mut agents: Vec<Box<dyn Agent<G>>> = Vec::new();

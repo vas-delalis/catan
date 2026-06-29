@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use agent::{
     Tournament,
     agents::*,
@@ -22,11 +20,7 @@ fn main() {
     // with_game!(game_name.as_str() => G {
     let models: Vec<Model<G>> = model_ids
         .into_iter()
-        .map(|id| {
-            let mut path: PathBuf = ["./models", &G::name(), &id.to_string()].iter().collect();
-            path.set_extension("safetensors");
-            Model::load(&path).unwrap().0
-        })
+        .map(|id: u32| Model::load(id).unwrap().0)
         .collect();
 
     // for t in models[0].var_store().trainable_variables() {

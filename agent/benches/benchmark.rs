@@ -1,4 +1,4 @@
-use std::{hint::black_box, path::PathBuf};
+use std::hint::black_box;
 
 #[allow(unused)]
 use agent::{
@@ -73,11 +73,7 @@ fn inference(c: &mut Criterion) {
     let player = tic_tac_toe::Player::X;
 
     for (id, hidden_dim) in [(3, 4), (5, 8), (6, 16)] {
-        let (model, _) = Model::load(&PathBuf::from(format!(
-            "./models/TicTacToe/{}.safetensors",
-            id
-        )))
-        .unwrap();
+        let (model, _) = Model::load(id).unwrap();
         let quantized_evaluator = QuantizedEvaluator::new(&model);
 
         group.throughput(criterion::Throughput::Elements(1));
