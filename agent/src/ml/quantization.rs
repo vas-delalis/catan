@@ -17,7 +17,7 @@ const WEIGHT_SCALE: i64 = 64;
 const WEIGHT_SCALE_LOG2: i32 = 6;
 const OUTPUT_SCALE: i64 = 64;
 /// Size of a 256-bit register in bytes.
-const REGISTER_WIDTH: usize = 256 / (size_of::<i8>() * 8);
+const REGISTER_WIDTH: usize = 256 / i8::BITS as usize;
 
 /// Significantly accelerates a [Model]'s inference by quantizing its parameters.
 pub struct QuantizedEvaluator<T: Image> {
@@ -218,7 +218,7 @@ impl LinearLayer {
     unsafe fn run(&self, input: *const i8, output: *mut i32) {
         let num_in_chunks = self.padded_num_in / REGISTER_WIDTH;
 
-        debug_assert!(self.padded_num_in % 32 == 0);
+        debug_assert!(self.padded_num_in.is_multiple_of(32));
         debug_assert_ne!(self.num_out_chunks, 0);
 
         let input = input as *const __m256i;

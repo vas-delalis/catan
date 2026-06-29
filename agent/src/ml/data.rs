@@ -47,7 +47,7 @@ impl<G: GameState + Image> Dataset<G> {
 
                 handles.push(s.spawn(move || {
                     let quantized_agent = Search::new(
-                        QuantizedEvaluator::new(&model),
+                        QuantizedEvaluator::new(model),
                         params.search_evals,
                         false,
                         1.41,

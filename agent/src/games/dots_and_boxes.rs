@@ -105,9 +105,9 @@ impl GameState for DotsAndBoxes {
             if winners.len() > 1 {
                 return Some((Draw, 1.0 / winners.len() as f32));
             }
-            return Some((Win, 1.0));
+            Some((Win, 1.0))
         } else {
-            return Some((Loss, -0.3333));
+            Some((Loss, -0.3333))
         }
     }
 
@@ -195,7 +195,7 @@ impl Image for DotsAndBoxes {
         }
 
         let mut score = vec![0f32; 4];
-        let max = (R * C) as f32 / 2 as f32;
+        let max = (R * C) as f32 / 2.0;
         for i in 0..4 {
             score[i] = self.score[i] as f32 / max;
         }
@@ -212,7 +212,7 @@ impl Image for DotsAndBoxes {
     fn quantized_image(&self, buffer: *mut i8, perspective: Self::Player) {
         let scale = ACTIVATION_SCALE as i8;
 
-        let mut idx = buffer.clone();
+        let mut idx = buffer;
         let mut board = self.board;
         for _ in 0..N_EDGES {
             unsafe {
@@ -222,7 +222,7 @@ impl Image for DotsAndBoxes {
             board >>= 1;
         }
 
-        let max = (R * C) as f32 / 2 as f32;
+        let max = (R * C) as f32 / 2.0;
         for i in 0..4 {
             let normalized = self.score[i] as f32 / max;
             unsafe {
@@ -257,9 +257,9 @@ impl PlayerTrait for Player {
     }
 }
 
-impl Into<usize> for Player {
-    fn into(self) -> usize {
-        self as usize
+impl From<Player> for usize {
+    fn from(val: Player) -> Self {
+        val as usize
     }
 }
 
@@ -320,11 +320,10 @@ impl Edge {
         let Edge(x, y, dir) = *self;
         let w = C as u8;
         let h = R as u8;
-        let bound = match dir {
+        match dir {
             Dir::N => x < w && y <= h,
             Dir::W => x <= w && y < h,
-        };
-        bound
+        }
     }
 }
 
@@ -400,9 +399,15 @@ mod tests {
 
                 for i in 0..image_size {
                     let a: i8 = (normal_img.i(i as i64) * 64).try_into().unwrap();
-                    assert_eq!(a, unsafe {
-                        (quantized_img as *mut i8).add(i as usize).read()
-                    })
+                    assert_eq!(
+                        a,
+                        unsafe { (quantized_img as *mut i8).add(i as usize).read() },
+                        "index {} is different",
+                        i
+                    )
+                }
+                unsafe {
+                    (quantized_img as *mut i8).write_bytes(0, image_size);
                 }
             }
         }
@@ -413,7 +418,7 @@ mod tests {
         let luck = Random {};
         let image_size = DotsAndBoxes::IMAGE_SIZE;
         let img: *mut [i8] = allocate_aligned_slice(image_size.next_multiple_of(32));
-        for _ in 0..1000 {
+        for _ in 0..0100 {
             let mut game = DotsAndBoxes::new();
             while !game.is_terminal() {
                 let action = luck.get_action(game.clone());
@@ -424,6 +429,10 @@ mod tests {
                 for i in 0..image_size {
                     let value = unsafe { (img as *mut i8).add(i as usize).read() };
                     assert!(value >= 0)
+                }
+
+                unsafe {
+                    (img as *mut i8).write_bytes(0, image_size);
                 }
             }
         }

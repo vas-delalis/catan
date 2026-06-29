@@ -1,4 +1,4 @@
-use common::{Image, Outcome, Player};
+use common::{Image, Outcome, Player as PlayerTrait};
 use rand::random_range;
 use std::{
     cmp::{max, min},
@@ -14,9 +14,9 @@ const DENOMINATOR: u32 = 100;
 pub struct OddsGame {
     w: u32,
     l: u32,
-    to_play: OddsGamePlayer,
+    to_play: Player,
     roll: bool,
-    winner: Option<OddsGamePlayer>,
+    winner: Option<Player>,
 }
 
 fn denom(w: u32, l: u32) -> u32 {
@@ -24,8 +24,8 @@ fn denom(w: u32, l: u32) -> u32 {
 }
 
 impl GameState for OddsGame {
-    type Action = OddsGameAction;
-    type Player = OddsGamePlayer;
+    type Action = Action;
+    type Player = Player;
 
     fn name() -> String {
         "OddsGame".to_string()
@@ -43,13 +43,13 @@ impl GameState for OddsGame {
 
     fn apply_action(&mut self, action: Self::Action) {
         match action {
-            OddsGameAction::Choose(w, l) => {
+            Action::Choose(w, l) => {
                 self.w = w;
                 self.l = l;
                 self.roll = true;
                 self.to_play = if self.to_play == A { B } else { A };
             }
-            OddsGameAction::Roll(opt) => match opt {
+            Action::Roll(opt) => match opt {
                 Some(A) => self.winner = Some(A),
                 Some(B) => self.winner = Some(B),
                 _ => self.roll = false,
@@ -68,16 +68,16 @@ impl GameState for OddsGame {
             let l = self.l as f64;
             (
                 vec![
-                    OddsGameAction::Roll(Some(A)),
-                    OddsGameAction::Roll(Some(B)),
-                    OddsGameAction::Roll(None),
+                    Action::Roll(Some(A)),
+                    Action::Roll(Some(B)),
+                    Action::Roll(None),
                 ],
                 Some(vec![w / denom, l / denom, (denom - w - l) / denom]),
             )
         } else {
             let mut actions = vec![];
             for _ in 0..8 {
-                actions.push(OddsGameAction::Choose(
+                actions.push(Action::Choose(
                     min(random_range(0..=100), DENOMINATOR),
                     min(random_range(0..=100), DENOMINATOR),
                 ));
@@ -116,7 +116,7 @@ impl Display for OddsGame {
 impl Image for OddsGame {
     const IMAGE_SIZE: usize = 4;
 
-    fn tensor_image(&self, arbiter: OddsGamePlayer) -> tch::Tensor {
+    fn tensor_image(&self, arbiter: Player) -> tch::Tensor {
         Tensor::from_slice(&[
             self.w as f32 / denom(self.w, self.l) as f32,
             self.l as f32 / denom(self.w, self.l) as f32,
@@ -131,30 +131,30 @@ impl Image for OddsGame {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum OddsGameAction {
+pub enum Action {
     Choose(u32, u32),
-    Roll(Option<OddsGamePlayer>),
+    Roll(Option<Player>),
 }
 
-impl From<usize> for OddsGameAction {
+impl From<usize> for Action {
     fn from(val: usize) -> Self {
         if val > 2 {
-            OddsGameAction::Choose((val >> 32) as u32, val as u32)
+            Action::Choose((val >> 32) as u32, val as u32)
         } else if val == 2 {
-            OddsGameAction::Roll(Some(B))
+            Action::Roll(Some(B))
         } else if val == 1 {
-            OddsGameAction::Roll(Some(A))
+            Action::Roll(Some(A))
         } else {
-            OddsGameAction::Roll(None)
+            Action::Roll(None)
         }
     }
 }
 
-impl Into<usize> for OddsGameAction {
-    fn into(self) -> usize {
-        match self {
-            OddsGameAction::Choose(w, l) => ((w as usize) << 32) | (l as usize),
-            OddsGameAction::Roll(opt) => match opt {
+impl From<Action> for usize {
+    fn from(val: Action) -> Self {
+        match val {
+            Action::Choose(w, l) => ((w as usize) << 32) | (l as usize),
+            Action::Roll(opt) => match opt {
                 Some(A) => 1,
                 Some(B) => 2,
                 None => 0,
@@ -164,28 +164,28 @@ impl Into<usize> for OddsGameAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum OddsGamePlayer {
+pub enum Player {
     A,
     B,
 }
-use OddsGamePlayer::*;
+use Player::*;
 
-impl Player for OddsGamePlayer {
+impl PlayerTrait for Player {
     const LEN: usize = 2;
     fn list() -> Vec<Self> {
         vec![A, B]
     }
 }
 
-impl Into<usize> for OddsGamePlayer {
-    fn into(self) -> usize {
-        self as usize
+impl From<Player> for usize {
+    fn from(val: Player) -> Self {
+        val as usize
     }
 }
 
 pub struct OddsEvaluator {}
 impl Evaluator<OddsGame> for OddsEvaluator {
-    fn evaluate(&self, game_state: &OddsGame, _: OddsGamePlayer) -> f32 {
+    fn evaluate(&self, game_state: &OddsGame, _: Player) -> f32 {
         let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
         let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;
         let v = v * 2.0 - 1.0;
@@ -199,7 +199,7 @@ impl Evaluator<OddsGame> for OddsEvaluator {
 
 pub struct NormalizedOddsEvaluator {}
 impl Evaluator<OddsGame> for NormalizedOddsEvaluator {
-    fn evaluate(&self, game_state: &OddsGame, _: OddsGamePlayer) -> f32 {
+    fn evaluate(&self, game_state: &OddsGame, _: Player) -> f32 {
         let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
         let v = v * 2.0 - 1.0;
         let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;

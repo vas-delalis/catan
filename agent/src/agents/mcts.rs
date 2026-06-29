@@ -113,7 +113,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
     }
 
-    fn evaluate<'a>(&self, node: &'a mut Node, game: &G) -> Vec<f64> {
+    fn evaluate(&self, node: &mut Node, game: &G) -> Vec<f64> {
         let to_play = game.current_player();
         if game.is_terminal() {
             return G::Player::list()
@@ -198,7 +198,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         softmax_sample(visit_counts)
     }
 
-    fn select_child<'a>(&self, node: &'a Node) -> G::Action {
+    fn select_child(&self, node: &Node) -> G::Action {
         let pb_c_base = self.pb_c_base as f32;
         let pb_c_init = self.pb_c_init as f32;
         let parent_visits = node.visits as f32;
@@ -224,7 +224,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         let mut rng = rng();
         let gamma = Gamma::new(self.dirichlet_alpha, 1.0).unwrap();
         let fraction = 0.25; // TODO: parameterize
-        for (_, child) in node.children.iter_mut() {
+        for child in node.children.values_mut() {
             child.prior *= 1.0 - fraction;
             child.prior += gamma.sample(&mut rng) * fraction;
         }

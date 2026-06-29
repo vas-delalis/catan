@@ -158,7 +158,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
     let (checkpoint_path, _) = model.save_with_config(&id.to_string(), &config).unwrap();
     println!(
         "Saved at {}",
-        &checkpoint_path.file_name().unwrap().to_string_lossy()
+        checkpoint_path.file_name().unwrap().to_string_lossy()
     );
 }
 

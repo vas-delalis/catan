@@ -18,18 +18,18 @@ impl PlayerTrait for Player {
     }
 }
 
-impl Into<usize> for Player {
-    fn into(self) -> usize {
-        self as usize
+impl From<Player> for usize {
+    fn from(val: Player) -> Self {
+        val as usize
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cell(pub u8); // board position 0-8
 
-impl Into<usize> for Cell {
-    fn into(self) -> usize {
-        self.0 as usize
+impl From<Cell> for usize {
+    fn from(val: Cell) -> Self {
+        val.0 as Self
     }
 }
 
@@ -200,8 +200,8 @@ impl Image for TicTacToe {
         for (i, tile) in self.board.iter().enumerate() {
             if let Some(p) = tile {
                 unsafe {
-                    buffer.add(i + 0).write(scale * (1 - (*p as i8)));
-                    buffer.add(i + 9).write(scale * (0 + (*p as i8)));
+                    buffer.add(i).write(scale * (1 - (*p as i8)));
+                    buffer.add(i + 9).write(scale * (*p as i8));
                 }
             }
         }

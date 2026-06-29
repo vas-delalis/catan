@@ -134,7 +134,7 @@ impl<'a, G: GameState> Tournament<'a, G> {
 
     pub fn add(&mut self, agent: Box<dyn Agent<G> + 'a>, name: &str, evaluate: bool) {
         self.roster.push(Participant {
-            agent: agent,
+            agent,
             name: name.to_string(),
             rating: 1000.0,
             wins: 0,
