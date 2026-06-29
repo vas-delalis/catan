@@ -70,6 +70,7 @@ impl<G: GameState + Image> Model<G> {
         let mut path = Self::get_dir();
         path.push(name.to_string());
 
+        let checkpoint_path = path.with_extension("safetensors");
         let config_path = path.with_extension("json");
 
         let config_json = fs::read_to_string(config_path)?;
@@ -86,7 +87,7 @@ impl<G: GameState + Image> Model<G> {
             vs,
             _game: PhantomData,
         };
-        model.vs.load(path)?;
+        model.vs.load(checkpoint_path)?;
 
         Ok((model, config))
     }
