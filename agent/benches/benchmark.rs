@@ -72,8 +72,8 @@ fn inference(c: &mut Criterion) {
     let game = tic_tac_toe_game();
     let player = tic_tac_toe::Player::X;
 
-    for (id, hidden_dim) in [(3, 4), (5, 8), (6, 16)] {
-        let (model, _) = Model::load(id).unwrap();
+    for (name, hidden_dim) in [("bench2x8", 8), ("bench2x16", 16), ("bench2x32", 32)] {
+        let (model, _) = Model::load(name).expect(&format!("Model {} should be available", name));
         let quantized_evaluator = QuantizedEvaluator::new(&model);
 
         group.throughput(criterion::Throughput::Elements(1));

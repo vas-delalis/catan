@@ -1,52 +1,20 @@
 use agent::{
     Agent,
     agents::{Evaluator, Random},
-    games::{
-        DotsAndBoxes,
-        tic_tac_toe::{self, TicTacToe},
-    },
+    games::{DotsAndBoxes, tic_tac_toe::TicTacToe},
     ml::{Model, QuantizedEvaluator},
 };
-use common::{GameState, Player};
+use common::{GameState, Image, Player};
 
-#[test]
-fn error_is_within_margin() {
-    let (model, _) = Model::load(7).unwrap();
+fn error_is_within_margin<G: GameState + Image>(name: &str) {
+    let (model, _) = Model::load(name).expect(&format!("A model named {name} should be available"));
     let quant = QuantizedEvaluator::new(&model);
-
+    let player = <G as GameState>::Player::list()[0];
     let luck = Random {};
-    let mut errors = vec![];
-    let mut max_error = 0.0;
-    for _ in 0..100 {
-        let mut game = TicTacToe::new();
-        while !game.is_terminal() {
-            let action = luck.get_action(game.clone());
-            game.apply_action(action);
 
-            let error = quant.evaluate(&game, tic_tac_toe::Player::X)
-                - model.evaluate(&game, tic_tac_toe::Player::X);
-
-            errors.push(error);
-            if error.abs() > max_error {
-                max_error = error.abs();
-            }
-        }
-    }
-    let sum: f32 = errors.iter().sum();
-    dbg!(sum / errors.len() as f32);
-    assert!(max_error < 0.1, "quantization error too high");
-}
-
-#[test]
-fn error_is_within_margin2() {
-    let (model, _) = Model::load(11).unwrap();
-    let quant = QuantizedEvaluator::new(&model);
-    let player = <DotsAndBoxes as GameState>::Player::list()[0];
-    let luck = Random {};
-    let mut max_error = 0.0;
     let mut errors = vec![];
     for _ in 0..1000 {
-        let mut game = DotsAndBoxes::new();
+        let mut game = G::new();
         while !game.is_terminal() {
             let action = luck.get_action(game.clone());
             game.apply_action(action);
@@ -54,12 +22,31 @@ fn error_is_within_margin2() {
             let error = quant.evaluate(&game, player) - model.evaluate(&game, player);
 
             errors.push(error);
-            if error.abs() > max_error {
-                max_error = error.abs();
-            }
         }
     }
+    let abs_sum: f32 = errors.iter().map(|e| e.abs()).sum();
+    let abs_avg = abs_sum / errors.len() as f32;
+    assert!(
+        abs_avg < 0.05,
+        "Quantization error too high. Average: {}",
+        abs_avg
+    );
+
     let sum: f32 = errors.iter().sum();
-    dbg!(sum / errors.len() as f32);
-    assert!(max_error < 0.15, "quantization error too high");
+    let avg = sum / errors.len() as f32;
+    assert!(
+        avg.abs() < 0.05,
+        "Quantization error has bias. Average: {}",
+        avg
+    );
+}
+
+#[test]
+fn tic_tac_toe_quant_error() {
+    error_is_within_margin::<TicTacToe>("test2x32");
+}
+
+#[test]
+fn dots_and_boxes_quant_error() {
+    error_is_within_margin::<DotsAndBoxes>("test2x32");
 }
