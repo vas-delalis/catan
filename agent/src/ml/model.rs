@@ -10,7 +10,7 @@ use crate::{
     agents::Evaluator,
     ml::{TrainingConfig, quantization::CLAMP_LIMIT},
 };
-use common::Image;
+use common::{Image, Player};
 
 pub struct Model<G: GameState + Image> {
     layers: Sequential,
@@ -46,8 +46,8 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
         seq = seq.add(nn::linear(
             root.clone() / "output",
             hidden,
-            1,
-            // G::Player::LEN as i64,
+            // 1,
+            G::Player::LEN as i64,
             Default::default(),
         ));
         seq
@@ -183,7 +183,7 @@ impl<G: GameState + Image> Evaluator<G> for Model<G> {
 }
 
 fn model_dir() -> PathBuf {
-    let dirs = directories::ProjectDirs::from("", "vas-delalis", "catan").unwrap();
+    let dirs = &common::PROJECT_DIRS;
     let data_dir = dirs.data_dir();
     [data_dir, &PathBuf::from("models")].iter().collect()
 }

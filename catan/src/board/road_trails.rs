@@ -55,8 +55,7 @@ impl BuildHasher for SeededRandomState {
 
 impl RoadTrailTableLoader {
     fn get_path() -> PathBuf {
-        let mut path = std::env::home_dir().expect("home dir should be available");
-        path.push(".local/share/catan");
+        let mut path = common::PROJECT_DIRS.data_dir().to_path_buf();
         path.push(LOOKUP_TABLE_NAME);
         path
     }

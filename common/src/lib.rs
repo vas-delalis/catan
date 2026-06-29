@@ -1,6 +1,10 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::LazyLock};
 
+use directories::ProjectDirs;
 use tch::Tensor;
+
+pub static PROJECT_DIRS: LazyLock<ProjectDirs> =
+    LazyLock::new(|| ProjectDirs::from("", "vas-delalis", "catan").unwrap());
 
 pub trait GameState: Clone + Send {
     type Action: Action;

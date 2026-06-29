@@ -13,7 +13,7 @@ use common::GameState;
 fn main() {
     let _no_grad = tch::no_grad_guard();
     let game_name = String::from("DotsAndBoxes");
-    let model_ids = [13, 14];
+    let model_ids = [0, 11];
     let evals = [10000, 10000, 1000, 100];
     let alphas = [0.001, 0.001, 0.001];
     type G = DotsAndBoxes;

@@ -7,7 +7,6 @@ edition = "2024"
 catan = { path = "../catan" }
 common = { path = "../common" }
 ctrlc = "3.5.2"
-directories = "6.0.0"
 itertools = "0.14.0"
 nohash-hasher = "0.2.0"
 rand = "0.9.2"
