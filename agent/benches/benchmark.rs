@@ -90,5 +90,35 @@ fn inference(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, dots_and_boxes, mcts, inference,);
+fn mcts_inference(c: &mut Criterion) {
+    let mut group = c.benchmark_group("mcts_inference");
+    let name = "test_mcts_inference";
+    let (model, _) = Model::load(name).expect(&format!("Model {} should be available", name));
+    for evals in [100, 1000, 2000] {
+        let agent = Search::new(
+            QuantizedEvaluator::new(&model),
+            evals,
+            true,
+            1.41,
+            1.0,
+            0.001,
+        );
+
+        group.bench_with_input(BenchmarkId::from_parameter(evals), &evals, |b, _| {
+            b.iter(|| {
+                let mut game: DotsAndBoxes = DotsAndBoxes::new();
+                while !game.is_terminal() {
+                    let action = agent.get_action(game.clone());
+                    game.apply_action(action);
+                    agent.inform(action);
+                }
+                agent.reset();
+            });
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, dots_and_boxes, mcts, inference, mcts_inference);
 criterion_main!(benches);

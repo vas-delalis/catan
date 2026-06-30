@@ -46,8 +46,8 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
         seq = seq.add(nn::linear(
             root.clone() / "output",
             hidden,
-            // 1,
-            G::Player::LEN as i64,
+            1,
+            // G::Player::LEN as i64,
             Default::default(),
         ));
         seq
