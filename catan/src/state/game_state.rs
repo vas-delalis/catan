@@ -72,10 +72,10 @@ impl GameState for State {
     }
 
     fn is_random(&self) -> bool {
-        match self.phase {
-            Phase::Rolling | StealingFromPlayer(_) | Phase::BuyingDevCard => true,
-            _ => false,
-        }
+        matches!(
+            self.phase,
+            Phase::Rolling | StealingFromPlayer(_) | Phase::BuyingDevCard
+        )
     }
 
     fn is_terminal(&self) -> bool {
@@ -110,13 +110,13 @@ impl GameState for State {
         if let Some((outcome1, _)) = self.outcome(player1)
             && let Some((outcome2, _)) = self.outcome(player2)
         {
-            return match (outcome1, outcome2) {
+            match (outcome1, outcome2) {
                 (Win, Loss) => Some((Win, 1.0)),
                 (Loss, Win) => Some((Loss, -1.0)),
                 _ => Some((Draw, 0.0)),
-            };
+            }
         } else {
-            return None;
+            None
         }
     }
 }

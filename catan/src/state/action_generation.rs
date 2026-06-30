@@ -19,11 +19,11 @@ impl State {
                     Purchasable::DevCard => actions.push(BuyDevCard),
                     Purchasable::Settlement => {
                         let slots = self.board.available_settlements(player);
-                        actions.extend(slots.map(|v_id| BuildSettlement(v_id)));
+                        actions.extend(slots.map(BuildSettlement));
                     }
                     Purchasable::City => {
                         let settlements = self.board.settlements(player);
-                        actions.extend(settlements.map(|v_id| UpgradeSettlement(v_id)));
+                        actions.extend(settlements.map(UpgradeSettlement));
                     }
                     Purchasable::Road => {
                         actions.extend(self.get_build_road_actions(player));
@@ -57,7 +57,7 @@ impl State {
     pub(super) fn get_robber_actions(&self) -> Vec<Action> {
         (0..N_HEXES)
             .filter(|&id| id != self.board.robber_hex_id())
-            .map(|id| MoveRobber(id))
+            .map(MoveRobber)
             .collect()
     }
 
@@ -66,7 +66,7 @@ impl State {
             .players_on_hex(hex_id)
             .into_iter()
             .filter(|&p| p != self.current_player() && self.player_resources[p].count_nonzero() > 0)
-            .map(|p| StealFrom(p))
+            .map(StealFrom)
             .collect()
     }
 
@@ -91,7 +91,7 @@ impl State {
         RESOURCES
             .into_iter()
             .filter(|&r| self.player_resources[player][r] > 0)
-            .map(|r| DiscardResource(r))
+            .map(DiscardResource)
             .collect()
     }
 
@@ -123,7 +123,7 @@ impl State {
         for i in 0..5 {
             if counts[i] > 0.0 {
                 actions.push(ReceiveDevCard(DEV_CARDS[i]));
-                weights.push(counts[i] as f64);
+                weights.push(counts[i]);
             }
         }
         (actions, Some(weights))
@@ -131,7 +131,7 @@ impl State {
 
     pub(super) fn get_build_road_actions(&self, player: Player) -> Vec<Action> {
         let slots = self.board.available_roads(player);
-        slots.map(|edge_id| BuildRoad(edge_id)).collect()
+        slots.map(BuildRoad).collect()
     }
 
     pub(super) fn get_year_of_plenty_actions(&self) -> Vec<Action> {
@@ -148,7 +148,7 @@ impl State {
     }
 
     pub(super) fn get_monopoly_actions(&self) -> Vec<Action> {
-        RESOURCES.into_iter().map(|r| Monopolize(r)).collect()
+        RESOURCES.into_iter().map(Monopolize).collect()
     }
 
     pub(super) fn get_roll_actions(&self) -> (Vec<Action>, Option<Vec<f64>>) {

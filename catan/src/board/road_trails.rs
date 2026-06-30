@@ -62,7 +62,8 @@ impl RoadTrailTableLoader {
 
     pub fn load() -> OwnedArchive<RoadTrailTableLoader, Vec<u8>> {
         let path = Self::get_path();
-        let mut file = File::open(&path).expect(&format!("{} should exist", path.display()));
+        let mut file =
+            File::open(&path).unwrap_or_else(|_| panic!("{} should exist", path.display()));
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).unwrap();
 
@@ -71,7 +72,7 @@ impl RoadTrailTableLoader {
 
     pub fn generate_and_save() -> Result<(), Box<dyn Error>> {
         let path = Self::get_path();
-        std::fs::create_dir_all(&path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
 
         let mut table: RoadTrailHashMap =
             HashMap::with_capacity_and_hasher(HASH_MAP_CAPACITY, SeededRandomState::new());
@@ -95,10 +96,10 @@ impl RoadTrailTableLoader {
 // This is the impl for RoadTrailTable
 impl ArchivedRoadTrailTableLoader {
     pub fn lookup(&self, graph: u128) -> u8 {
-        *self.map.get(&graph.into()).expect(&format!(
-            "lookup table should contain road graph: {:#x}",
-            graph
-        ))
+        *self
+            .map
+            .get(&graph.into())
+            .unwrap_or_else(|| panic!("lookup table should contain road graph: {:#x}", graph))
     }
 
     /// Returns the longest trail for a road graph by querying the lookup table.
@@ -171,7 +172,7 @@ pub fn slow_longest_trail(roads: Bitboard<u128>) -> u8 {
                     if path.contains(c) {
                         continue;
                     }
-                    let mut new_path = path.clone();
+                    let mut new_path = *path;
                     new_path.add(c);
                     curr[0][vi].push(new_path);
                     // dbg!(curr[0][vi].len());
@@ -233,7 +234,7 @@ impl Iterator for RoadGraphIterator {
         if let Some(b) = self.queue.pop_back() {
             if b.roads.count_ones() < 15 {
                 for next_edge in b.road_slots {
-                    let mut next_b = b.clone();
+                    let mut next_b = b;
                     next_b.add_road(next_edge, ADJACENCY.edge_to_edges[next_edge]);
                     if !self.unique.insert(next_b.roads.value) {
                         continue;

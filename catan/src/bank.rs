@@ -10,7 +10,7 @@ pub struct Bank {
 }
 
 impl Bank {
-    pub fn bank() -> Self {
+    pub fn new() -> Self {
         let cards = (enum_map! {
             Knight => 14,
             VictoryPoint => 5,

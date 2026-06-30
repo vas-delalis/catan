@@ -8,18 +8,18 @@
 
 use std::sync::LazyLock;
 
-use enum_map::{enum_map, Enum, EnumMap};
+use enum_map::{Enum, EnumMap, enum_map};
 
 use crate::{
+    Bitboard, E, Edge, HexBoard, V,
     board::hex_board::*,
     board::road_trails::{RoadTrailTable, RoadTrailTableLoader},
     common::*,
-    Bitboard, Edge, HexBoard, E, V,
 };
 
 // static BOARD_DATA: OnceLock<SharedBoardData> = OnceLock::new();
-pub static ADJACENCY: LazyLock<Adjacency> = LazyLock::new(|| Adjacency::new());
-pub static ROAD_TRAILS: LazyLock<RoadTrailTable> = LazyLock::new(|| RoadTrailTableLoader::load());
+pub static ADJACENCY: LazyLock<Adjacency> = LazyLock::new(Adjacency::new);
+pub static ROAD_TRAILS: LazyLock<RoadTrailTable> = LazyLock::new(RoadTrailTableLoader::load);
 // static HEX_BOARD: OnceLock<HexBoard> = OnceLock::new();
 // static HEX_DATA: OnceLock<HexData> = OnceLock::new();
 

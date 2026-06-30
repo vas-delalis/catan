@@ -33,16 +33,16 @@ impl Clone for Board {
     fn clone(&self) -> Self {
         Board {
             shared_data: Arc::clone(&self.shared_data),
-            player_buildings: self.player_buildings.clone(),
-            player_roads: self.player_roads.clone(),
-            player_settlement_slots: self.player_settlement_slots.clone(),
-            player_road_slots: self.player_road_slots.clone(),
-            settlement_slots: self.settlement_slots.clone(),
-            road_slots: self.road_slots.clone(),
-            cities: self.cities.clone(),
-            robber: self.robber.clone(),
-            longest_roads: self.longest_roads.clone(),
-            road_leader: self.road_leader.clone(),
+            player_buildings: self.player_buildings,
+            player_roads: self.player_roads,
+            player_settlement_slots: self.player_settlement_slots,
+            player_road_slots: self.player_road_slots,
+            settlement_slots: self.settlement_slots,
+            road_slots: self.road_slots,
+            cities: self.cities,
+            robber: self.robber,
+            longest_roads: self.longest_roads,
+            road_leader: self.road_leader,
         }
     }
 }
@@ -150,7 +150,7 @@ impl Board {
     }
 
     pub fn available_roads(&self, player: Player) -> Bitboard<E> {
-        (self.road_slots & self.player_road_slots[player]).into()
+        self.road_slots & self.player_road_slots[player]
     }
 
     pub fn buildings(&self, player: Player) -> Bitboard<V> {

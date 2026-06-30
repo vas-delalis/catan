@@ -74,7 +74,7 @@ impl Default for State {
 
 impl State {
     pub fn with_board(board: Board) -> Self {
-        let bank = Bank::bank();
+        let bank = Bank::new();
 
         State {
             bank,
@@ -217,14 +217,14 @@ impl State {
             } else {
                 Phase::Discarding(to_discard)
             };
-            return None;
+            None
         } else {
             // Calculate resource production (for each resource, for each player)
             let production = self.board.produce_resources(roll, self.bank.resources);
             for player in PLAYERS {
                 self.take_from_bank(player, production[player]);
             }
-            return Some(production);
+            Some(production)
         }
     }
 }
