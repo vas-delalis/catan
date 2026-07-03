@@ -1,3 +1,4 @@
+use generic_array::typenum;
 use std::fmt::Display;
 use tch::Tensor;
 
@@ -106,19 +107,18 @@ impl Display for Pig {
 }
 
 impl Image for Pig {
-    const IMAGE_SIZE: usize = 5;
+    const IMAGE_SIZE: usize = 4;
 
-    fn tensor_image(&self, arbiter: Player) -> Tensor {
+    fn tensor_image(&self) -> Tensor {
         Tensor::from_slice(&[
             self.scores[0] as f32 / WIN_SCORE as f32,
             self.scores[1] as f32 / WIN_SCORE as f32,
             self.turn_total as f32 / WIN_SCORE as f32,
             if self.to_play == Player::P1 { 1.0 } else { 0.0 },
-            if arbiter == Player::P1 { 1.0 } else { 0.0 },
         ])
     }
 
-    fn quantized_image(&self, _buffer: *mut i8, _perspective: Self::Player) {
+    fn quantized_image(&self, _buffer: *mut i8) {
         todo!()
     }
 }
@@ -167,6 +167,7 @@ impl Player {
 
 impl PlayerTrait for Player {
     const LEN: usize = 2;
+    type Len = typenum::U2;
     fn list() -> Vec<Self> {
         vec![Player::P1, Player::P2]
     }
@@ -221,7 +222,7 @@ mod tests {
     #[test]
     fn image_size_is_accurate() {
         assert_eq!(
-            Pig::new().tensor_image(Player::P1).size()[0] as usize,
+            Pig::new().tensor_image().size()[0] as usize,
             Pig::IMAGE_SIZE
         )
     }

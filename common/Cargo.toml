@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 directories = "6.0.0"
+generic-array = "1.4.3"
 tch = "0.22.0"

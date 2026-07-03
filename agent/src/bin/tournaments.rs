@@ -1,7 +1,7 @@
 use agent::{
     Tournament,
     agents::*,
-    games::DotsAndBoxes,
+    games::{DotsAndBoxes, TicTacToe},
     ml::{Model, QuantizedEvaluator},
     with_game,
 };
@@ -12,9 +12,9 @@ use common::GameState;
 
 fn main() {
     let _no_grad = tch::no_grad_guard();
-    let game_name = String::from("DotsAndBoxes");
-    let model_ids = [0, 11];
-    let evals = [10000, 10000, 1000, 100];
+    let game_name = String::from("TicTacToe");
+    let model_ids = [0, 0];
+    let evals = [100, 1000, 1000, 100];
     let alphas = [0.001, 0.001, 0.001];
     type G = DotsAndBoxes;
     // with_game!(game_name.as_str() => G {
@@ -28,20 +28,41 @@ fn main() {
     // }
 
     let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05);
-    for (idx, (id, model)) in model_ids.iter().zip(&models).enumerate() {
-        tournament.add(
-            Box::new(Search::new(
-                QuantizedEvaluator::new(model),
-                evals[idx],
-                true,
-                1.41,
-                1.0,
-                alphas[idx],
-            )),
-            &format!("model {}x{} α={}", id, evals[idx], alphas[idx]),
+    // for (idx, (id, model)) in model_ids.iter().zip(&models).enumerate() {
+    //     tournament.add(
+    //         Box::new(Search::new(
+    //             QuantizedEvaluator::new(model),
+    //             evals[idx],
+    //             true,
+    //             1.41,
+    //             1.0,
+    //             alphas[idx],
+    //         )),
+    //         &format!("model {}x{} α={}", id, evals[idx], alphas[idx]),
+    //         true,
+    //     );
+    // }
+
+    tournament.add(
+        Box::new(Search::new(
+            &models[0], evals[0], true, 1.41, 1.0, alphas[0],
+        )),
+        &format!("model {}x{} α={}", model_ids[0], evals[0], alphas[0]),
+        true,
+    );
+
+    tournament.add(
+        Box::new(Search::new(
+            QuantizedEvaluator::new(&models[1]),
+            evals[1],
             true,
-        );
-    }
+            1.41,
+            1.0,
+            alphas[1],
+        )),
+        &format!("model {}x{} α={}", model_ids[1], evals[1], alphas[1]),
+        true,
+    );
 
     // tournament.add(
     //     Box::new(Search::new(

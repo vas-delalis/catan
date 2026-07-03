@@ -48,8 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for a in agents.iter() {
                 a.inform(action);
             }
-            for p in <G as GameState>::Player::list() {
-                print!("{:.2} ", model.evaluate(&game, p));
+            for x in model.evaluate(&game) {
+                print!("{:.2} ", x);
             }
             println!();
             println!();

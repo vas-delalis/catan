@@ -10,7 +10,7 @@ use crate::{
     agents::Evaluator,
     ml::{TrainingConfig, quantization::CLAMP_LIMIT},
 };
-use common::{Image, Player};
+use common::{Evaluation, Image, Player};
 
 pub struct Model<G: GameState + Image> {
     layers: Sequential,
@@ -46,8 +46,7 @@ pub fn vanilla<G: GameState + Image>(layers: usize, hidden: i64) -> CreateLayers
         seq = seq.add(nn::linear(
             root.clone() / "output",
             hidden,
-            1,
-            // G::Player::LEN as i64,
+            G::Player::LEN as i64,
             Default::default(),
         ));
         seq
@@ -176,9 +175,10 @@ impl<G: GameState + Image> Model<G> {
 unsafe impl<G: GameState + Image> Sync for Model<G> {}
 
 impl<G: GameState + Image> Evaluator<G> for Model<G> {
-    fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
-        let image = game_state.tensor_image(arbiter);
-        self.infer(image).try_into().unwrap()
+    fn evaluate(&self, game_state: &G) -> Evaluation<G> {
+        let image = game_state.tensor_image();
+        let vec: Vec<f32> = self.infer(image).try_into().unwrap();
+        vec.try_into().unwrap()
     }
 }
 

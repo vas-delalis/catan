@@ -1,4 +1,5 @@
 use common::{Image, Outcome, Player as PlayerTrait};
+use generic_array::typenum;
 use rand::random_range;
 use std::{
     cmp::{max, min},
@@ -6,7 +7,7 @@ use std::{
 };
 use tch::Tensor;
 
-use crate::{GameState, agents::Evaluator};
+use crate::GameState;
 
 const DENOMINATOR: u32 = 100;
 
@@ -114,18 +115,17 @@ impl Display for OddsGame {
 }
 
 impl Image for OddsGame {
-    const IMAGE_SIZE: usize = 4;
+    const IMAGE_SIZE: usize = 3;
 
-    fn tensor_image(&self, arbiter: Player) -> tch::Tensor {
+    fn tensor_image(&self) -> tch::Tensor {
         Tensor::from_slice(&[
             self.w as f32 / denom(self.w, self.l) as f32,
             self.l as f32 / denom(self.w, self.l) as f32,
             if self.current_player() == A { 1.0 } else { 0.0 },
-            if arbiter == A { 1.0 } else { 0.0 },
         ])
     }
 
-    fn quantized_image(&self, _buffer: *mut i8, _perspective: Self::Player) {
+    fn quantized_image(&self, _buffer: *mut i8) {
         todo!()
     }
 }
@@ -172,6 +172,7 @@ use Player::*;
 
 impl PlayerTrait for Player {
     const LEN: usize = 2;
+    type Len = typenum::U2;
     fn list() -> Vec<Self> {
         vec![A, B]
     }
@@ -180,34 +181,6 @@ impl PlayerTrait for Player {
 impl From<Player> for usize {
     fn from(val: Player) -> Self {
         val as usize
-    }
-}
-
-pub struct OddsEvaluator {}
-impl Evaluator<OddsGame> for OddsEvaluator {
-    fn evaluate(&self, game_state: &OddsGame, _: Player) -> f32 {
-        let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
-        let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;
-        let v = v * 2.0 - 1.0;
-        if game_state.current_player() == A {
-            -v
-        } else {
-            v
-        }
-    }
-}
-
-pub struct NormalizedOddsEvaluator {}
-impl Evaluator<OddsGame> for NormalizedOddsEvaluator {
-    fn evaluate(&self, game_state: &OddsGame, _: Player) -> f32 {
-        let v = game_state.w as f32 / (game_state.w + game_state.l) as f32;
-        let v = v * 2.0 - 1.0;
-        let v = v * (game_state.w + game_state.l) as f32 / DENOMINATOR as f32;
-        if game_state.current_player() == A {
-            -v
-        } else {
-            v
-        }
     }
 }
 

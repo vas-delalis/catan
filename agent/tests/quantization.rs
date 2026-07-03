@@ -4,12 +4,11 @@ use agent::{
     games::{DotsAndBoxes, tic_tac_toe::TicTacToe},
     ml::{Model, QuantizedEvaluator},
 };
-use common::{GameState, Image, Player};
+use common::{GameState, Image};
 
 fn error_is_within_margin<G: GameState + Image>(name: &str) {
     let (model, _) = Model::load(name).expect(&format!("A model named {name} should be available"));
     let quant = QuantizedEvaluator::new(&model);
-    let player = <G as GameState>::Player::list()[0];
     let luck = Random {};
 
     let mut errors = vec![];
@@ -19,9 +18,10 @@ fn error_is_within_margin<G: GameState + Image>(name: &str) {
             let action = luck.get_action(game.clone());
             game.apply_action(action);
 
-            let error = quant.evaluate(&game, player) - model.evaluate(&game, player);
-
-            errors.push(error);
+            for (a, b) in quant.evaluate(&game).iter().zip(model.evaluate(&game)) {
+                assert!((a - b).is_finite());
+                errors.push(a - b);
+            }
         }
     }
     let abs_sum: f32 = errors.iter().map(|e| e.abs()).sum();

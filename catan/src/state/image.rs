@@ -4,8 +4,8 @@ use tch::Tensor;
 use crate::State;
 
 impl Image for State {
-    const IMAGE_SIZE: usize = 20;
-    fn tensor_image(&self, arbiter: Self::Player) -> Tensor {
+    const IMAGE_SIZE: usize = 16;
+    fn tensor_image(&self) -> Tensor {
         let mut resources = vec![0f32; 4];
         for p in Self::Player::list() {
             resources[p as usize] = self.player_resources[p].reduce_sum() as f32
@@ -24,13 +24,10 @@ impl Image for State {
         let mut turn = vec![0f32; 4];
         turn[self.whose_turn as usize] = 1.0;
 
-        let mut pov = vec![0f32; 4];
-        pov[arbiter as usize] = 1.0;
-
-        Tensor::from_slice(&[resources, production, score, turn, pov].concat())
+        Tensor::from_slice(&[resources, production, score, turn].concat())
     }
 
-    fn quantized_image(&self, _buffer: *mut i8, _perspective: Self::Player) {
+    fn quantized_image(&self, _buffer: *mut i8) {
         todo!()
     }
 }

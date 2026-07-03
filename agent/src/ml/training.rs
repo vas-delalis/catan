@@ -73,15 +73,13 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
             let mut images = Vec::with_capacity(params.batch_size * G::Player::LEN);
             let mut targets = Vec::with_capacity(params.batch_size * G::Player::LEN);
             for (state, values) in batch {
-                for (&arbiter, &value) in G::Player::list().iter().zip(values.iter()) {
-                    let x = state.tensor_image(arbiter);
-                    let y = Tensor::from(value);
-                    images.push(x);
-                    targets.push(y);
-                }
+                let x = state.tensor_image();
+                let y = Tensor::try_from(values).unwrap();
+                images.push(x);
+                targets.push(y);
             }
             let images = Tensor::stack(&images, 1).transpose(0, 1);
-            let targets = Tensor::stack(&targets, 0).reshape([-1, 1]);
+            let targets = Tensor::stack(&targets, 0);
 
             let output = model.infer(images);
 
@@ -110,13 +108,11 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
         let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
         let mut test_losses = vec![];
         for (state, values) in dataset_test.drain() {
-            for (&arbiter, &value) in G::Player::list().iter().zip(values.iter()) {
-                let x = state.tensor_image(arbiter);
-                let y = Tensor::from(value);
-                let loss = model.infer(x).mse_loss(&y, tch::Reduction::Sum);
-                let loss: f32 = loss.try_into().unwrap();
-                test_losses.push(loss);
-            }
+            let x = state.tensor_image();
+            let y = Tensor::try_from(values).unwrap();
+            let loss = model.infer(x).mse_loss(&y, tch::Reduction::Sum);
+            let loss: f32 = loss.try_into().unwrap();
+            test_losses.push(loss);
         }
 
         let n = test_losses.len();

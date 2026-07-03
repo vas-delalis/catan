@@ -1,6 +1,7 @@
 use std::{fmt::Debug, sync::LazyLock};
 
 use directories::ProjectDirs;
+use generic_array::{ArrayLength, GenericArray};
 use tch::Tensor;
 
 pub static PROJECT_DIRS: LazyLock<ProjectDirs> =
@@ -18,6 +19,7 @@ pub trait GameState: Clone + Send {
     fn current_player(&self) -> Self::Player;
     fn is_terminal(&self) -> bool;
     fn outcome(&self, player: Self::Player) -> Option<(Outcome, f32)>;
+    // fn outcomes(&self) -> Option<Vec<(Outcome, f32)>>;
     fn pairwise_outcome(
         &self,
         player1: Self::Player,
@@ -25,10 +27,12 @@ pub trait GameState: Clone + Send {
     ) -> Option<(Outcome, f32)>;
 }
 
+pub type Evaluation<G> = GenericArray<f32, <<G as GameState>::Player as Player>::Len>;
+
 pub trait Image: GameState {
     const IMAGE_SIZE: usize;
-    fn tensor_image(&self, arbiter: Self::Player) -> Tensor;
-    fn quantized_image(&self, buffer: *mut i8, perspective: Self::Player);
+    fn tensor_image(&self) -> Tensor;
+    fn quantized_image(&self, buffer: *mut i8);
 }
 
 pub trait Action: Copy + Debug + Into<usize> + From<usize> + Send {}
@@ -36,6 +40,7 @@ impl<T: Copy + Debug + Into<usize> + From<usize> + Send> Action for T {}
 
 pub trait Player: Copy + PartialEq + Debug + Into<usize> + Send {
     const LEN: usize;
+    type Len: ArrayLength;
     fn list() -> Vec<Self>;
 }
 

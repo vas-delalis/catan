@@ -1,6 +1,6 @@
 use std::{fmt::Display, sync::LazyLock};
 
-use crate::{GameState, agents::Evaluator, ml::ACTIVATION_SCALE};
+use crate::{GameState, ml::ACTIVATION_SCALE};
 use common::{Image, Outcome, Player as PlayerTrait};
 
 const R: usize = 5;
@@ -182,9 +182,9 @@ impl Display for DotsAndBoxes {
 }
 
 impl Image for DotsAndBoxes {
-    const IMAGE_SIZE: usize = N_EDGES + 12;
+    const IMAGE_SIZE: usize = N_EDGES + 8;
 
-    fn tensor_image(&self, arbiter: Player) -> tch::Tensor {
+    fn tensor_image(&self) -> tch::Tensor {
         use tch::Tensor;
 
         let mut board_image = vec![0f32; N_EDGES];
@@ -203,13 +203,10 @@ impl Image for DotsAndBoxes {
         let mut to_play = vec![0f32; 4];
         to_play[self.current_player as usize] = 1.0;
 
-        let mut arbiter_vec = vec![0f32; 4];
-        arbiter_vec[arbiter as usize] = 1.0;
-
-        Tensor::from_slice(&[board_image, score, to_play, arbiter_vec].concat())
+        Tensor::from_slice(&[board_image, score, to_play].concat())
     }
 
-    fn quantized_image(&self, buffer: *mut i8, perspective: Self::Player) {
+    fn quantized_image(&self, buffer: *mut i8) {
         let scale = ACTIVATION_SCALE as i8;
 
         let mut idx = buffer;
@@ -231,11 +228,8 @@ impl Image for DotsAndBoxes {
             }
         }
         let current = self.current_player() as usize;
-        let perspective = perspective as usize;
         unsafe {
             idx = idx.add(current);
-            idx.write(scale);
-            idx = idx.add(4 - current + perspective);
             idx.write(scale);
         }
     }
@@ -251,6 +245,7 @@ pub enum Player {
 
 impl PlayerTrait for Player {
     const LEN: usize = 4;
+    type Len = typenum::U4;
     fn list() -> Vec<Player> {
         use Player::*;
         vec![A, B, C, D]
@@ -270,6 +265,7 @@ pub enum Dir {
 }
 
 use Dir::*;
+use generic_array::typenum;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Edge(pub u8, pub u8, pub Dir);
@@ -349,22 +345,6 @@ static BOXES: LazyLock<[(u64, u64); N_EDGES]> = LazyLock::new(|| {
     })
 });
 
-pub struct ScoreEvaluator {}
-impl Evaluator<DotsAndBoxes> for ScoreEvaluator {
-    fn evaluate(&self, game_state: &DotsAndBoxes, _: Player) -> f32 {
-        let sum: u8 = game_state.score.iter().sum();
-        if sum == 0 {
-            return 0.0;
-        }
-        let idx = Player::list()
-            .iter()
-            .position(|&p| game_state.current_player() == p)
-            .unwrap();
-        let share = game_state.score[idx] as f32 / sum as f32;
-        share * 2.0 - 1.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use tch::IndexOp;
@@ -394,8 +374,8 @@ mod tests {
                 let action = luck.get_action(game.clone());
                 game.apply_action(action);
 
-                let normal_img = Image::tensor_image(&game, Player::A);
-                game.quantized_image(quantized_img as *mut i8, Player::A);
+                let normal_img = Image::tensor_image(&game);
+                game.quantized_image(quantized_img as *mut i8);
 
                 for i in 0..image_size {
                     let a: i8 = (normal_img.i(i as i64) * 64).try_into().unwrap();
@@ -424,7 +404,7 @@ mod tests {
                 let action = luck.get_action(game.clone());
                 game.apply_action(action);
 
-                game.quantized_image(img as *mut i8, Player::A);
+                game.quantized_image(img as *mut i8);
 
                 for i in 0..image_size {
                     let value = unsafe { (img as *mut i8).add(i as usize).read() };

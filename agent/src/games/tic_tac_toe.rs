@@ -1,6 +1,7 @@
 use std::fmt;
 
 use common::{Image, Outcome, Player as PlayerTrait};
+use generic_array::typenum;
 use tch::Tensor;
 
 use crate::{Agent, GameState, ml::ACTIVATION_SCALE};
@@ -13,6 +14,7 @@ pub enum Player {
 
 impl PlayerTrait for Player {
     const LEN: usize = 2;
+    type Len = typenum::U2;
     fn list() -> Vec<Player> {
         vec![Player::X, Player::O]
     }
@@ -156,9 +158,9 @@ impl fmt::Display for TicTacToe {
 }
 
 impl Image for TicTacToe {
-    const IMAGE_SIZE: usize = 20;
+    const IMAGE_SIZE: usize = 19;
 
-    fn tensor_image(&self, arbiter: Self::Player) -> tch::Tensor {
+    fn tensor_image(&self) -> tch::Tensor {
         let mut exes: Vec<f32> = vec![];
         let mut ohs: Vec<f32> = vec![];
 
@@ -185,16 +187,11 @@ impl Image for TicTacToe {
         } else {
             vec![0.0]
         };
-        let arb: Vec<f32> = if arbiter == Player::X {
-            vec![1.0]
-        } else {
-            vec![0.0]
-        };
 
-        Tensor::from_slice(&[exes, ohs, curr, arb].concat())
+        Tensor::from_slice(&[exes, ohs, curr].concat())
     }
 
-    fn quantized_image(&self, buffer: *mut i8, perspective: Self::Player) {
+    fn quantized_image(&self, buffer: *mut i8) {
         let scale = ACTIVATION_SCALE as i8;
 
         for (i, tile) in self.board.iter().enumerate() {
@@ -209,7 +206,6 @@ impl Image for TicTacToe {
             buffer
                 .add(18)
                 .write(scale * (1 - (self.current_player() as i8)));
-            buffer.add(19).write(scale * (1 - (perspective as i8)));
         }
     }
 }
@@ -392,9 +388,9 @@ mod tests {
                 let action = luck.get_action(game.clone());
                 game.apply_action(action);
 
-                let normal = Image::tensor_image(&game, Player::X);
+                let normal = Image::tensor_image(&game);
                 let quantized: *mut [i8] = allocate_aligned_slice(32);
-                game.quantized_image(quantized as *mut i8, Player::X);
+                game.quantized_image(quantized as *mut i8);
 
                 for i in 0..TicTacToe::IMAGE_SIZE {
                     let a: i8 = (normal.i(i as i64) * 64).try_into().unwrap();

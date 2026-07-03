@@ -2,6 +2,8 @@ mod human;
 mod mcts;
 mod random;
 
+use common::Evaluation;
+use generic_array::sequence::GenericSequence;
 pub use human::Human;
 pub use mcts::{Evaluator, Search};
 pub use random::Random;
@@ -18,7 +20,7 @@ impl ConstantEvaluator {
     }
 }
 impl<G: GameState> Evaluator<G> for ConstantEvaluator {
-    fn evaluate(&self, _: &G, _: G::Player) -> f32 {
-        self.constant
+    fn evaluate(&self, _: &G) -> Evaluation<G> {
+        Evaluation::<G>::repeat(self.constant)
     }
 }

@@ -4,15 +4,15 @@ use rand_distr::{Distribution, Gamma};
 use std::cell::RefCell;
 
 use crate::{Agent, GameState};
-use common::Player;
+use common::{Evaluation, Player};
 
 pub trait Evaluator<G: GameState> {
-    fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32;
+    fn evaluate(&self, game_state: &G) -> Evaluation<G>;
 }
 
 impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
-    fn evaluate(&self, game_state: &G, arbiter: G::Player) -> f32 {
-        (**self).evaluate(game_state, arbiter)
+    fn evaluate(&self, game_state: &G) -> Evaluation<G> {
+        (**self).evaluate(game_state)
     }
 }
 
@@ -113,21 +113,18 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
         }
     }
 
-    fn evaluate(&self, node: &mut Node, game: &G) -> Vec<f64> {
+    fn evaluate(&self, node: &mut Node, game: &G) -> Evaluation<G> {
         let to_play = game.current_player();
         if game.is_terminal() {
             return G::Player::list()
                 .iter()
-                .map(|&p| game.outcome(p).unwrap().1 as f64)
+                .map(|&p| game.outcome(p).unwrap().1)
                 .collect();
         }
         let (actions, probs) = game.get_actions(to_play);
 
         // Run inference
-        let values = G::Player::list()
-            .iter()
-            .map(|&p| self.evaluator.evaluate(game, p) as f64)
-            .collect();
+        let values = self.evaluator.evaluate(game);
         // Convert priors into odds
         let policy: Vec<f64> = if let Some(probs) = probs {
             probs.into_iter().map(|p| p / (1.0 - p)).collect()
@@ -170,12 +167,12 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             let values = self.evaluate(node, &scratch);
 
             // Backpropagate
-            root.total_value += values[game_state.current_player().into()];
+            root.total_value += values[game_state.current_player().into()] as f64;
             root.visits += 1;
             let mut node = &mut root;
             for &(played, a) in &search_path {
                 node = node.children.get_mut(&a.into()).unwrap();
-                node.total_value += values[played.into()];
+                node.total_value += values[played.into()] as f64;
                 node.visits += 1;
             }
         }

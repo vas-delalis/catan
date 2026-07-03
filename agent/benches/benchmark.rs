@@ -70,7 +70,6 @@ fn tic_tac_toe_game() -> TicTacToe {
 fn inference(c: &mut Criterion) {
     let mut group = c.benchmark_group("inference");
     let game = tic_tac_toe_game();
-    let player = tic_tac_toe::Player::X;
 
     for (name, hidden_dim) in [("bench2x8", 8), ("bench2x16", 16), ("bench2x32", 32)] {
         let (model, _) = Model::load(name).expect(&format!("Model {} should be available", name));
@@ -80,14 +79,16 @@ fn inference(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("float", hidden_dim),
             &hidden_dim,
-            |b, _| b.iter(|| model.evaluate(black_box(&game), player)),
+            |b, _| b.iter(|| model.evaluate(black_box(&game))),
         );
         group.bench_with_input(
             BenchmarkId::new("quantized", hidden_dim),
             &hidden_dim,
-            |b, _| b.iter(|| quantized_evaluator.evaluate(black_box(&game), player)),
+            |b, _| b.iter(|| quantized_evaluator.evaluate(black_box(&game))),
         );
     }
+
+    group.finish();
 }
 
 fn mcts_inference(c: &mut Criterion) {

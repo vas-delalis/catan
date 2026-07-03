@@ -4,7 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
-use common::{GameState, Image};
+use common::{Evaluation, GameState, Image, Player};
 use tch::Tensor;
 
 use crate::{agents::Evaluator, ml::Model};
@@ -82,9 +82,9 @@ impl<T: Image> QuantizedEvaluator<T> {
 }
 
 impl<T: GameState + Image> Evaluator<T> for QuantizedEvaluator<T> {
-    fn evaluate(&self, game_state: &T, perspective: T::Player) -> f32 {
+    fn evaluate(&self, game_state: &T) -> Evaluation<T> {
         self.buffers.clear();
-        game_state.quantized_image(self.buffers.input as *mut i8, perspective);
+        game_state.quantized_image(self.buffers.input as *mut i8);
 
         unsafe {
             self.linear0.run(
@@ -107,7 +107,15 @@ impl<T: GameState + Image> Evaluator<T> for QuantizedEvaluator<T> {
                 self.buffers.crelu1 as *const i8,
                 self.buffers.output as *mut i32,
             );
-            (self.buffers.output as *mut i32).read() as f32 / WEIGHT_SCALE as f32
+
+            let base = self.buffers.output as *const i32;
+            for i in 0..T::Player::LEN {
+                let addr = base.add(i);
+                let value = addr.read() as f32 / WEIGHT_SCALE as f32;
+                (addr as *mut f32).write(value);
+            }
+            let slice = std::slice::from_raw_parts(base as *const f32, T::Player::LEN);
+            Evaluation::<T>::from_slice(slice).clone()
         }
     }
 }

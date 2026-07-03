@@ -1,6 +1,7 @@
 use std::fmt;
 
 use enum_map::{Enum, EnumMap};
+use generic_array::typenum;
 use serde::{Deserialize, Serialize};
 
 use crate::bundle::Bundle;
@@ -139,6 +140,7 @@ impl From<Player> for usize {
 
 impl PlayerTrait for Player {
     const LEN: usize = 4;
+    type Len = typenum::U4;
     fn list() -> Vec<Self> {
         vec![Blue, Orange, Red, White]
     }

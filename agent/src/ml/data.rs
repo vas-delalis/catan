@@ -28,7 +28,7 @@ impl<G: GameState + Image> Dataset<G> {
     }
 
     pub fn drain(&mut self) -> std::vec::Drain<'_, (G, Vec<f32>)> {
-        self.replay_buffer.drain(0..)
+        self.replay_buffer.drain(..)
     }
 
     pub fn self_play(&mut self, model: &Model<G>, params: &Hyperparameters, threads: usize) {
