@@ -1,7 +1,7 @@
 use std::fmt;
 
-use common::{Image, Outcome, Player as PlayerTrait};
-use generic_array::typenum;
+use common::{Evaluation, Image, Outcome, Player as PlayerTrait};
+use generic_array::{GenericArray, typenum};
 use tch::Tensor;
 
 use crate::{Agent, GameState, ml::ACTIVATION_SCALE};
@@ -125,6 +125,20 @@ impl GameState for TicTacToe {
         } else {
             None
         }
+    }
+
+    fn scores(&self) -> Option<Evaluation<Self>> {
+        if !self.is_terminal() {
+            return None;
+        }
+        let winner = self.check_winner();
+        Some(GenericArray::from_iter(Player::list().into_iter().map(
+            |p| match winner {
+                Some(winner) if p == winner => 1.0,
+                Some(_) => -1.0,
+                None => 0.0,
+            },
+        )))
     }
 
     fn pairwise_outcome(&self, player1: Self::Player, _: Self::Player) -> Option<(Outcome, f32)> {

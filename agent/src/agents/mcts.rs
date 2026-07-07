@@ -4,7 +4,7 @@ use rand_distr::{Distribution, Gamma};
 use std::cell::RefCell;
 
 use crate::{Agent, GameState};
-use common::{Evaluation, Player};
+use common::Evaluation;
 
 pub trait Evaluator<G: GameState> {
     fn evaluate(&self, game_state: &G) -> Evaluation<G>;
@@ -116,10 +116,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     fn evaluate(&self, node: &mut Node, game: &G) -> Evaluation<G> {
         let to_play = game.current_player();
         if game.is_terminal() {
-            return G::Player::list()
-                .iter()
-                .map(|&p| game.outcome(p).unwrap().1)
-                .collect();
+            return game.scores().unwrap();
         }
         let (actions, probs) = game.get_actions(to_play);
 

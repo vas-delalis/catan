@@ -19,7 +19,7 @@ pub trait GameState: Clone + Send {
     fn current_player(&self) -> Self::Player;
     fn is_terminal(&self) -> bool;
     fn outcome(&self, player: Self::Player) -> Option<(Outcome, f32)>;
-    // fn outcomes(&self) -> Option<Vec<(Outcome, f32)>>;
+    fn scores(&self) -> Option<Evaluation<Self>>;
     fn pairwise_outcome(
         &self,
         player1: Self::Player,

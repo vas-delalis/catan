@@ -1,7 +1,8 @@
 use std::{fmt::Display, sync::LazyLock};
 
 use crate::{GameState, ml::ACTIVATION_SCALE};
-use common::{Image, Outcome, Player as PlayerTrait};
+use common::{Evaluation, Image, Outcome, Player as PlayerTrait};
+use generic_array::GenericArray;
 
 const R: usize = 5;
 const C: usize = 5;
@@ -97,10 +98,7 @@ impl GameState for DotsAndBoxes {
 
     fn outcome(&self, player: Player) -> Option<(Outcome, f32)> {
         use Outcome::*;
-        if !self.is_terminal() {
-            return None;
-        }
-        let winners = self.winners().unwrap();
+        let winners = self.winners()?;
         if winners.contains(&player) {
             if winners.len() > 1 {
                 return Some((Draw, 1.0 / winners.len() as f32));
@@ -109,6 +107,23 @@ impl GameState for DotsAndBoxes {
         } else {
             Some((Loss, -0.3333))
         }
+    }
+
+    fn scores(&self) -> Option<Evaluation<Self>> {
+        let winners = self.winners()?;
+        Some(GenericArray::from_iter(Player::list().into_iter().map(
+            |p| {
+                if winners.contains(&p) {
+                    if winners.len() > 1 {
+                        1.0 / winners.len() as f32
+                    } else {
+                        1.0
+                    }
+                } else {
+                    -0.3333
+                }
+            },
+        )))
     }
 
     fn pairwise_outcome(&self, player1: Player, player2: Player) -> Option<(Outcome, f32)> {

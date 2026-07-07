@@ -1,4 +1,5 @@
-use common::{GameState, Outcome};
+use common::{Evaluation, GameState, Outcome, Player as PlayerTrait};
+use generic_array::GenericArray;
 
 use crate::{
     Action, PLAYERS,
@@ -101,24 +102,17 @@ impl GameState for State {
         Some((Outcome::Loss, -0.3333))
     }
 
-    // fn outcomes(&self) -> Option<Vec<(Outcome, f32)>> {
-    //     let current_player_wins = self.victory_points(self.whose_turn) >= 10;
-    //     if !current_player_wins {
-    //         return None;
-    //     }
-    //     Some(
-    //         Self::Player::list()
-    //             .iter()
-    //             .map(|&p| {
-    //                 if p == self.whose_turn {
-    //                     (Outcome::Win, 1.0)
-    //                 } else {
-    //                     (Outcome::Loss, -0.3333)
-    //                 }
-    //             })
-    //             .collect(),
-    //     )
-    // }
+    fn scores(&self) -> Option<Evaluation<Self>> {
+        let current_player_wins = self.victory_points(self.whose_turn) >= 10;
+        if !current_player_wins {
+            return None;
+        }
+        Some(GenericArray::from_iter(Self::Player::list().iter().map(
+            |&p| {
+                if p == self.whose_turn { 1.0 } else { -0.3333 }
+            },
+        )))
+    }
 
     fn pairwise_outcome(
         &self,

@@ -1,5 +1,5 @@
-use common::{Image, Outcome, Player as PlayerTrait};
-use generic_array::typenum;
+use common::{Evaluation, Image, Outcome, Player as PlayerTrait};
+use generic_array::{GenericArray, typenum};
 use rand::random_range;
 use std::{
     cmp::{max, min},
@@ -101,6 +101,16 @@ impl GameState for OddsGame {
             Some(winner) if winner == player => Some((Outcome::Win, 1.0)),
             Some(_) => Some((Outcome::Loss, -1.0)),
         }
+    }
+
+    fn scores(&self) -> Option<Evaluation<Self>> {
+        self.winner.map(|winner| {
+            GenericArray::from_iter(
+                Player::list()
+                    .into_iter()
+                    .map(|p| if p == winner { 1.0 } else { -1.0 }),
+            )
+        })
     }
 
     fn pairwise_outcome(&self, player1: Self::Player, _: Self::Player) -> Option<(Outcome, f32)> {

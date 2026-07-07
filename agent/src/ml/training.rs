@@ -74,7 +74,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
             let mut targets = Vec::with_capacity(params.batch_size * G::Player::LEN);
             for (state, values) in batch {
                 let x = state.tensor_image();
-                let y = Tensor::try_from(values).unwrap();
+                let y = Tensor::from_slice(&values);
                 images.push(x);
                 targets.push(y);
             }
@@ -109,7 +109,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
         let mut test_losses = vec![];
         for (state, values) in dataset_test.drain() {
             let x = state.tensor_image();
-            let y = Tensor::try_from(values).unwrap();
+            let y = Tensor::from_slice(&values);
             let loss = model.infer(x).mse_loss(&y, tch::Reduction::Sum);
             let loss: f32 = loss.try_into().unwrap();
             test_losses.push(loss);

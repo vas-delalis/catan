@@ -1,4 +1,4 @@
-use common::{GameState, Image, Player};
+use common::{Evaluation, GameState, Image};
 use rand::seq::SliceRandom;
 use tch::no_grad_guard;
 
@@ -8,7 +8,7 @@ use crate::{
     ml::{Hyperparameters, Model, QuantizedEvaluator},
 };
 
-type Snapshot<G> = (G, Vec<f32>);
+type Snapshot<G> = (G, Evaluation<G>);
 
 pub struct Dataset<G: GameState> {
     replay_buffer: Vec<Snapshot<G>>,
@@ -27,7 +27,7 @@ impl<G: GameState + Image> Dataset<G> {
         self.replay_buffer.len()
     }
 
-    pub fn drain(&mut self) -> std::vec::Drain<'_, (G, Vec<f32>)> {
+    pub fn drain(&mut self) -> std::vec::Drain<'_, (G, Evaluation<G>)> {
         self.replay_buffer.drain(..)
     }
 
@@ -105,12 +105,8 @@ impl<G: GameState + Image> Dataset<G> {
             agent.reset();
 
             for state in buffer {
-                let players = G::Player::list();
-                let values: Vec<f32> = players
-                    .iter()
-                    .map(|&p| game.outcome(p).unwrap().1)
-                    .collect();
-                thread_buffer.push((state, values));
+                let scores = game.scores().unwrap();
+                thread_buffer.push((state, scores));
             }
         }
         thread_buffer
