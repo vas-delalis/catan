@@ -18,7 +18,7 @@ impl<G: GameState, E: Evaluator<G>> Evaluator<G> for &E {
 
 #[derive(Clone)]
 pub struct Node {
-    visits: u16,
+    visits: u32,
     children: IntMap<usize, Node>,
     prior: f64, // TODO: smaller? quantized?
     total_value: f64,
@@ -148,7 +148,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             self.add_exploration_noise(&mut root);
         }
 
-        let mut search_path: Vec<(G::Player, G::Action)> = vec![];
+        let mut search_path: Vec<(Option<G::Player>, G::Action)> = vec![];
         for _ in 0..self.max_evals {
             let mut node = &mut root;
             let mut scratch = game_state.clone();
@@ -157,7 +157,9 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             while !node.children.is_empty() {
                 let action = self.select_child(node);
                 node = node.children.get_mut(&action.into()).unwrap();
-                search_path.push((scratch.current_player(), action));
+                // If the state is random, consider the action to have no player
+                let played = (!scratch.is_random()).then_some(scratch.current_player());
+                search_path.push((played, action));
                 scratch.apply_action(action);
             }
 
@@ -169,7 +171,10 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
             let mut node = &mut root;
             for &(played, a) in &search_path {
                 node = node.children.get_mut(&a.into()).unwrap();
-                node.total_value += values[played.into()] as f64;
+                // Random actions (no `played`) are neutral
+                if let Some(played) = played {
+                    node.total_value += values[played.into()] as f64;
+                }
                 node.visits += 1;
             }
         }
@@ -181,7 +186,7 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
     }
 
     fn select_action(&self, root: &Node, greedy: bool) -> G::Action {
-        let visit_counts: Vec<(u16, <G as GameState>::Action)> = root
+        let visit_counts: Vec<(u32, <G as GameState>::Action)> = root
             .children
             .iter()
             .map(|(&a, v)| (v.visits, G::Action::from(a)))
@@ -256,7 +261,7 @@ impl<G: GameState, E: Evaluator<G>> Agent<G> for Search<G, E> {
     }
 }
 
-fn softmax_sample<A: Copy>(vec: Vec<(u16, A)>) -> A {
+fn softmax_sample<A: Copy>(vec: Vec<(u32, A)>) -> A {
     let max_exponent = vec.iter().map(|(e, _)| *e).max().unwrap() as f64;
     let exponentials = vec
         .iter()
