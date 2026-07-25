@@ -1,11 +1,11 @@
 use generic_array::{GenericArray, typenum};
-use std::fmt::Display;
+use std::{cell::RefCell, fmt::Display};
 use tch::Tensor;
 
-use crate::GameState;
+use crate::{Agent, GameState};
 use common::{Evaluation, Image, Outcome, Player as PlayerTrait};
 
-const WIN_SCORE: u32 = 50;
+const WIN_SCORE: u32 = 100;
 
 #[derive(Debug, Clone)]
 pub struct Pig {
@@ -128,8 +128,16 @@ impl Image for Pig {
         ])
     }
 
-    fn quantized_image(&self, _buffer: *mut i8) {
-        todo!()
+    fn quantized_image(&self, mut buffer: *mut i8) {
+        unsafe {
+            buffer.write((self.scores[0] as f32 / WIN_SCORE as f32 * 64.0) as i8);
+            buffer = buffer.add(1);
+            buffer.write((self.scores[1] as f32 / WIN_SCORE as f32 * 64.0) as i8);
+            buffer = buffer.add(1);
+            buffer.write((self.turn_total as f32 / WIN_SCORE as f32 * 64.0) as i8);
+            buffer = buffer.add(1);
+            buffer.write(if self.to_play == Player::P1 { 64 } else { 0 });
+        }
     }
 }
 
@@ -187,6 +195,99 @@ impl From<Player> for usize {
     fn from(val: Player) -> Self {
         val as Self
     }
+}
+
+pub struct OptimalPig {
+    probabilities: RefCell<Vec<Vec<Vec<f32>>>>,
+}
+
+impl OptimalPig {
+    pub fn new() -> Self {
+        let dirs = &common::PROJECT_DIRS;
+        let data_dir = dirs.data_dir();
+        let path = data_dir.join("probabilities.json");
+
+        #[derive(serde::Deserialize)]
+        struct ProbabilitiesFile {
+            probabilities: Vec<f32>,
+        }
+
+        let json = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("{} should exist", path.display()));
+        let data: ProbabilitiesFile =
+            serde_json::from_str(&json).expect("probabilities.json should be valid JSON");
+
+        let probabilities = data
+            .probabilities
+            .chunks(100)
+            .map(|row| row.iter().map(|&p| vec![p]).collect())
+            .collect();
+
+        OptimalPig {
+            probabilities: RefCell::new(probabilities),
+        }
+    }
+
+    fn should_roll(&self, i: u32, j: u32, k: u32) -> bool {
+        let mut p_roll = 1.0 - self.p_win(j, i, 0);
+        for roll in 2..=6 {
+            p_roll += self.p_win(i, j, k + roll);
+        }
+        p_roll /= 6.0;
+
+        let p_hold = 1.0 - self.p_win(j, i + k, 0);
+        // dbg!(p_roll * 2.0 - 1.0, p_hold * 2.0 - 1.0);
+        p_roll > p_hold
+    }
+
+    fn p_win(&self, i: u32, j: u32, k: u32) -> f32 {
+        if i + k >= WIN_SCORE {
+            return 1.0;
+        } else if j >= WIN_SCORE {
+            return 0.0;
+        } else if k != 0
+            && self.probabilities.borrow()[i as usize][j as usize].len() < (WIN_SCORE - i) as usize
+        {
+            self.probabilities.borrow_mut()[i as usize][j as usize].resize(WIN_SCORE as usize, 0.0);
+            for k2 in (1..WIN_SCORE).rev() {
+                let mut p_roll = 1.0 - self.p_win(j, i, 0);
+                for roll in 2..=6 {
+                    p_roll += self.p_win(i, j, k2 + roll)
+                }
+                p_roll /= 6.0;
+                let p_hold = 1.0 - self.p_win(j, i + k2, 0);
+                self.probabilities.borrow_mut()[i as usize][j as usize][k2 as usize] =
+                    p_roll.max(p_hold);
+            }
+        }
+        self.probabilities.borrow()[i as usize][j as usize][k as usize]
+    }
+}
+
+impl Agent<Pig> for OptimalPig {
+    fn get_action(&self, game_state: Pig) -> <Pig as GameState>::Action {
+        let (i, j, k) = if game_state.current_player() == Player::P1 {
+            (
+                game_state.scores[0],
+                game_state.scores[1],
+                game_state.turn_total,
+            )
+        } else {
+            (
+                game_state.scores[1],
+                game_state.scores[0],
+                game_state.turn_total,
+            )
+        };
+        if self.should_roll(i, j, k) {
+            Action::Roll
+        } else {
+            Action::Bank
+        }
+    }
+
+    fn inform(&self, _action: <Pig as GameState>::Action) {}
+    fn reset(&self) {}
 }
 
 #[cfg(test)]
