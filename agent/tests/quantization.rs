@@ -18,7 +18,10 @@ fn error_is_within_margin<G: GameState + Image>(name: &str) {
             let action = luck.get_action(game.clone());
             game.apply_action(action);
 
-            for (a, b) in quant.evaluate(&game).iter().zip(model.evaluate(&game)) {
+            let quantized = quant.evaluate(&game);
+            let scalar = model.evaluate(&game);
+
+            for (a, b) in quantized.iter().zip(scalar) {
                 assert!((a - b).is_finite());
                 errors.push(a - b);
             }

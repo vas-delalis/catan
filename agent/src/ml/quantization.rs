@@ -11,104 +11,116 @@ use crate::{agents::Evaluator, ml::Model};
 
 pub use utils::allocate_aligned_slice;
 
-pub const CLAMP_LIMIT: f64 = 1.984375;
+pub const CLAMP_LIMIT: f64 = i8::MAX as f64 / 64.0;
 pub const ACTIVATION_SCALE: i64 = 64;
 const WEIGHT_SCALE: i64 = 64;
 const WEIGHT_SCALE_LOG2: i32 = 6;
 const OUTPUT_SCALE: i64 = 64;
 /// Size of a 256-bit register in bytes.
-const REGISTER_WIDTH: usize = 256 / i8::BITS as usize;
+const REGISTER_WIDTH: usize = 256 / BITS_PER_BYTE;
+const BITS_PER_BYTE: usize = 8;
 
 /// Significantly accelerates a [Model]'s inference by quantizing its parameters.
 pub struct QuantizedEvaluator<T: Image> {
-    linear0: LinearLayer,
-    crelu0: CReLU,
-    linear1: LinearLayer,
-    crelu1: CReLU,
-    output: LinearLayer,
-    buffers: Buffers,
+    input: *mut [i8],
+    output: *mut [i32],
+    blocks: Vec<Block>,
+    output_layer: LinearLayer,
     _game: PhantomData<T>,
 }
 
 impl<T: Image> QuantizedEvaluator<T> {
     pub fn new(model: &Model<T>) -> Self {
-        assert!(
-            !model.var_store().variables().contains_key("layer2.weight"),
-            "QuantizedEvaluator only supports models with 2 hidden layers."
-        );
+        let n_layers = (0..)
+            .map(|i| {
+                model
+                    .var_store()
+                    .variables()
+                    .contains_key(&format!("layer{}.weight", i))
+            })
+            .position(|contains| !contains)
+            .expect("model var store should contain parameters of the form layer{i}.weight");
 
-        let linear0 = LinearLayer::from_tensors(
-            &model.var_store().variables()["layer0.weight"],
-            &model.var_store().variables()["layer0.bias"],
-        );
-        let crelu0 = CReLU {
-            num_out_chunks: linear0.padded_num_out.next_multiple_of(32) / REGISTER_WIDTH,
-        };
-        let linear1 = LinearLayer::from_tensors(
-            &model.var_store().variables()["layer1.weight"],
-            &model.var_store().variables()["layer1.bias"],
-        );
-        let crelu1 = CReLU {
-            num_out_chunks: linear1.padded_num_out.next_multiple_of(32) / REGISTER_WIDTH,
-        };
-        let output = LinearLayer::from_tensors(
+        let blocks = (0..n_layers)
+            .map(|i| {
+                let linear = LinearLayer::from_tensors(
+                    &model.var_store().variables()[&format!("layer{}.weight", i)],
+                    &model.var_store().variables()[&format!("layer{}.bias", i)],
+                );
+                let crelu = CReLU {
+                    num_out_chunks: linear.padded_num_out.next_multiple_of(32) / REGISTER_WIDTH,
+                };
+                let linear_out_size = linear.padded_num_out.next_multiple_of(32) * size_of::<i32>();
+                let crelu_out_size = crelu.num_out_chunks * 32 * size_of::<i8>();
+                let linear_output = allocate_aligned_slice(linear_out_size);
+                let crelu_output = allocate_aligned_slice(crelu_out_size);
+                Block {
+                    linear,
+                    crelu,
+                    linear_output,
+                    crelu_output,
+                }
+            })
+            .collect();
+
+        let output_layer = LinearLayer::from_tensors(
             &model.var_store().variables()["output.weight"],
             &model.var_store().variables()["output.bias"],
         );
 
-        let buffers = Buffers {
-            input: allocate_aligned_slice(T::IMAGE_SIZE.next_multiple_of(32) * size_of::<i8>()),
-            linear0: allocate_aligned_slice(
-                linear0.padded_num_out.next_multiple_of(32) * size_of::<i32>(),
-            ),
-            crelu0: allocate_aligned_slice(linear1.padded_num_in * size_of::<i8>()),
-            linear1: allocate_aligned_slice(
-                linear1.padded_num_out.next_multiple_of(32) * size_of::<i32>(),
-            ),
-            crelu1: allocate_aligned_slice(output.padded_num_in * size_of::<i8>()),
-            output: allocate_aligned_slice(output.padded_num_out * size_of::<i32>()),
-        };
+        let input = allocate_aligned_slice(T::IMAGE_SIZE.next_multiple_of(32) * size_of::<i8>());
+        let output = allocate_aligned_slice(output_layer.padded_num_out * size_of::<i32>());
 
         Self {
-            linear0,
-            crelu0,
-            linear1,
-            crelu1,
+            input,
             output,
-            buffers,
+            blocks,
+            output_layer,
             _game: PhantomData,
+        }
+    }
+
+    #[inline]
+    fn clear_input(&self) {
+        unsafe {
+            (self.input as *mut i8).write_bytes(0, self.input.len());
         }
     }
 }
 
 impl<T: GameState + Image> Evaluator<T> for QuantizedEvaluator<T> {
     fn evaluate(&self, game_state: &T) -> Evaluation<T> {
-        self.buffers.clear();
-        game_state.quantized_image(self.buffers.input as *mut i8);
+        self.clear_input();
+        game_state.quantized_image(self.input as *mut i8);
 
+        let n_blocks = self.blocks.len();
         unsafe {
-            self.linear0.run(
-                self.buffers.input as *mut i8,
-                self.buffers.linear0 as *mut i32,
+            self.blocks[0].linear.run(
+                self.input as *const i8,
+                self.blocks[0].linear_output as *mut i32,
             );
-            self.crelu0.run(
-                self.buffers.linear0 as *const i32,
-                self.buffers.crelu0 as *mut i8,
-            );
-            self.linear1.run(
-                self.buffers.crelu0 as *const i8,
-                self.buffers.linear1 as *mut i32,
-            );
-            self.crelu1.run(
-                self.buffers.linear1 as *const i32,
-                self.buffers.crelu1 as *mut i8,
-            );
-            self.output.run(
-                self.buffers.crelu1 as *const i8,
-                self.buffers.output as *mut i32,
+            self.blocks[0].crelu.run(
+                self.blocks[0].linear_output as *const i32,
+                self.blocks[0].crelu_output as *mut i8,
             );
 
-            let base = self.buffers.output as *const i32;
+            for i in 1..n_blocks {
+                self.blocks[i].linear.run(
+                    self.blocks[i - 1].crelu_output as *const i8,
+                    self.blocks[i].linear_output as *mut i32,
+                );
+                self.blocks[i].crelu.run(
+                    self.blocks[i].linear_output as *const i32,
+                    self.blocks[i].crelu_output as *mut i8,
+                );
+            }
+
+            self.output_layer.run(
+                self.blocks[n_blocks - 1].crelu_output as *const i8,
+                self.output as *mut i32,
+            );
+
+            let base = self.output as *const i32;
             for i in 0..T::Player::LEN {
                 let addr = base.add(i);
                 let value = addr.read() as f32 / WEIGHT_SCALE as f32;
@@ -120,50 +132,13 @@ impl<T: GameState + Image> Evaluator<T> for QuantizedEvaluator<T> {
     }
 }
 
-struct Buffers {
-    input: *mut [i8],
-    linear0: *mut [i32],
-    crelu0: *mut [i8],
-    linear1: *mut [i32],
-    crelu1: *mut [i8],
-    output: *mut [i32],
-}
-
-impl Buffers {
-    fn clear(&self) {
-        unsafe {
-            (self.input as *mut i8).write_bytes(0, self.input.len());
-            (self.linear0 as *mut i32).write_bytes(0, self.linear0.len());
-            (self.crelu0 as *mut i8).write_bytes(0, self.crelu0.len());
-            (self.linear1 as *mut i32).write_bytes(0, self.linear1.len());
-            (self.crelu1 as *mut i8).write_bytes(0, self.crelu1.len());
-            (self.output as *mut i32).write_bytes(0, self.output.len());
-        }
-    }
-}
-
-impl Drop for Buffers {
+impl<T: Image> Drop for QuantizedEvaluator<T> {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
             dealloc(
                 self.input as *mut u8,
                 Layout::from_size_align(self.input.len() * size_of::<i8>(), 64).unwrap(),
-            );
-            dealloc(
-                self.linear0 as *mut u8,
-                Layout::from_size_align(self.linear0.len() * size_of::<i32>(), 64).unwrap(),
-            );
-            dealloc(
-                self.crelu0 as *mut u8,
-                Layout::from_size_align(self.crelu0.len() * size_of::<i8>(), 64).unwrap(),
-            );
-            dealloc(
-                self.linear1 as *mut u8,
-                Layout::from_size_align(self.linear1.len() * size_of::<i32>(), 64).unwrap(),
-            );
-            dealloc(
-                self.crelu1 as *mut u8,
-                Layout::from_size_align(self.crelu1.len() * size_of::<i8>(), 64).unwrap(),
             );
             dealloc(
                 self.output as *mut u8,
@@ -173,8 +148,34 @@ impl Drop for Buffers {
     }
 }
 
+struct Block {
+    linear: LinearLayer,
+    crelu: CReLU,
+    linear_output: *mut [i32],
+    crelu_output: *mut [i8],
+}
+
+impl Drop for Block {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(
+                self.linear_output as *mut u8,
+                Layout::from_size_align(self.linear_output.len() * size_of::<i32>(), 64).unwrap(),
+            );
+            dealloc(
+                self.crelu_output as *mut u8,
+                Layout::from_size_align(self.crelu_output.len() * size_of::<i8>(), 64).unwrap(),
+            );
+        }
+    }
+}
+
+/// Implements matrix–vector multiplication.
 struct LinearLayer {
+    /// Multiple of 32
     padded_num_in: usize,
+    /// Multiple of 4
     padded_num_out: usize,
     num_out_chunks: usize,
     weights: *const i8,
@@ -306,6 +307,7 @@ impl Drop for LinearLayer {
     }
 }
 
+/// Implements the clipped rectified linear unit, equivalent to clamp(0, CLAMP_LIMIT).
 struct CReLU {
     num_out_chunks: usize,
 }
