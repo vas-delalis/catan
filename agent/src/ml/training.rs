@@ -22,29 +22,30 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
 
     let arch = vanilla::<G>(model_config.layers, model_config.hidden_dim);
     let model = Model::new(arch);
-    let mut optimizer = nn::Adam::default()
+    let mut optimizer = nn::AdamW::default()
         .build(model.var_store(), params.learning_rate)
         .unwrap();
+    optimizer.set_weight_decay(params.weight_decay);
 
     let search_evals = params.search_evals;
     let dirichlet_alpha = params.dirichlet_alpha;
     let agent_factory = || {
         boxed(Search::new(
-        &model,
+            &model,
             search_evals,
-        false,
-        1.41,
-        1.0,
+            false,
+            1.41,
+            1.0,
             dirichlet_alpha,
         ))
     };
     let reference_factory = || {
         boxed(Search::new(
-        ConstantEvaluator::new(0.0),
+            ConstantEvaluator::new(0.0),
             search_evals,
-        false,
-        1.41,
-        1.0,
+            false,
+            1.41,
+            1.0,
             dirichlet_alpha,
         ))
     };
@@ -75,7 +76,8 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
 
         // Train
         let mut train_loss = 0.0;
-        let n_states = dataset_train.len();
+        let n_iterations = dataset_train.len().div_ceil(params.batch_size);
+
         for batch in &dataset_train.drain().chunks(params.batch_size) {
             let mut images = Vec::with_capacity(params.batch_size * G::Player::LEN);
             let mut targets = Vec::with_capacity(params.batch_size * G::Player::LEN);
@@ -90,7 +92,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
 
             let output = model.infer(images);
 
-            let loss = output.mse_loss(&targets, tch::Reduction::Sum);
+            let loss = output.mse_loss(&targets, tch::Reduction::Mean);
             optimizer.backward_step(&loss);
             {
                 // Clamp weights for later quantization
@@ -108,7 +110,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
         print!(
             "[Epoch {}] Train: {:.3} / ",
             epoch,
-            train_loss / n_states as f32 / G::Player::LEN as f32
+            train_loss / n_iterations as f32
         );
 
         // Test
@@ -117,7 +119,7 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
         for (state, values) in dataset_test.drain() {
             let x = state.tensor_image();
             let y = Tensor::from_slice(&values);
-            let loss = model.infer(x).mse_loss(&y, tch::Reduction::Sum);
+            let loss = model.infer(x).mse_loss(&y, tch::Reduction::Mean);
             let loss: f32 = loss.try_into().unwrap();
             test_losses.push(loss);
         }
@@ -143,6 +145,15 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
             return;
         }
     }
+
+    let mut norm = 0.0;
+    for p in &mut model.var_store().trainable_variables() {
+        let flat = p.flatten(0, -1);
+        let x: f32 = flat.linalg_norm(2, 0, false, None).try_into().unwrap();
+        norm += x.powi(2);
+    }
+    let norm = norm.sqrt();
+    dbg!(&norm);
 
     println!("Training complete. Elapsed: {}s", start.elapsed().as_secs());
 

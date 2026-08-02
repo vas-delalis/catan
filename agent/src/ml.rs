@@ -32,4 +32,5 @@ pub struct Hyperparameters {
     pub dirichlet_alpha: f64,
     pub self_play_sampling_rate: f64,
     pub self_play_random_action_chance: f64,
+    pub weight_decay: f64,
 }
