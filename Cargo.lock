@@ -26,6 +26,7 @@ dependencies = [
  "catan",
  "common",
  "criterion 0.8.2",
+ "crossbeam-channel",
  "ctrlc",
  "generic-array 1.4.3",
  "itertools 0.14.0",
@@ -456,6 +457,15 @@ checksum = "d8d80a2f4f5b554395e47b5d8305bc3d27813bacb73493eb1001e8f76dae29ea"
 dependencies = [
  "cast",
  "itertools 0.13.0",
+]
+
+[[package]]
+name = "crossbeam-channel"
+version = "0.5.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d85363c37faeca707aef026efa9f3b34d077bce547e48f770770625c6013679e"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]

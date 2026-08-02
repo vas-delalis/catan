@@ -1,11 +1,11 @@
 use agent::{
     Tournament,
     agents::*,
-    games::{DotsAndBoxes, TicTacToe},
+    boxed,
+    games::Pig,
     ml::{Model, QuantizedEvaluator},
     with_game,
 };
-use common::GameState;
 
 // alphas:
 // DotsAndBoxes: 0.0001
@@ -13,10 +13,10 @@ use common::GameState;
 fn main() {
     let _no_grad = tch::no_grad_guard();
     let game_name = String::from("TicTacToe");
-    let model_ids = [0, 0];
-    let evals = [100, 1000, 1000, 100];
-    let alphas = [0.001, 0.001, 0.001];
-    type G = DotsAndBoxes;
+    let model_ids = [12, 15];
+    let evals = [1000, 1000, 1000, 1000, 1000];
+    let alphas = [0.0001, 0.0001, 0.0001, 0.0001, 0.0001];
+    type G = Pig;
     // with_game!(game_name.as_str() => G {
     let models: Vec<Model<G>> = model_ids
         .into_iter()
@@ -28,41 +28,26 @@ fn main() {
     // }
 
     let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05);
-    // for (idx, (id, model)) in model_ids.iter().zip(&models).enumerate() {
-    //     tournament.add(
-    //         Box::new(Search::new(
-    //             QuantizedEvaluator::new(model),
-    //             evals[idx],
-    //             true,
-    //             1.41,
-    //             1.0,
-    //             alphas[idx],
-    //         )),
-    //         &format!("model {}x{} α={}", id, evals[idx], alphas[idx]),
-    //         true,
-    //     );
-    // }
-
-    tournament.add(
-        Box::new(Search::new(
-            &models[0], evals[0], true, 1.41, 1.0, alphas[0],
-        )),
-        &format!("model {}x{} α={}", model_ids[0], evals[0], alphas[0]),
-        true,
-    );
-
-    tournament.add(
-        Box::new(Search::new(
-            QuantizedEvaluator::new(&models[1]),
-            evals[1],
+    for (idx, (id, model)) in model_ids.iter().zip(&models).enumerate() {
+        let eval = evals[idx];
+        let alpha = alphas[idx];
+        tournament.add(
+            move || {
+                boxed(Search::new(
+                    QuantizedEvaluator::new(model),
+                    eval,
+                    true,
+                    1.41,
+                    1.0,
+                    alpha,
+                ))
+            },
+            &format!("model {}x{} α={}", id, evals[idx], alphas[idx]),
             true,
-            1.41,
-            1.0,
-            alphas[1],
-        )),
-        &format!("model {}x{} α={}", model_ids[1], evals[1], alphas[1]),
-        true,
-    );
+        );
+    }
+
+    // tournament.add(|| boxed(OptimalPig::new()), "OptimalPig", true);
 
     // tournament.add(
     //     Box::new(Search::new(
@@ -76,8 +61,8 @@ fn main() {
     //     "constant",
     //     false,
     // );
-    tournament.add(Box::new(Random {}), "random", false);
-    tournament.add(Box::new(Random {}), "random", false);
+    // tournament.add(Box::new(Random {}), "random", false);
+    // tournament.add(Box::new(Random {}), "random", false);
     // tournament.add(Box::new(OptimalTicTacToe {}), "optimal", true);
 
     tournament.play();

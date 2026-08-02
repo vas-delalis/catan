@@ -44,6 +44,10 @@ pub trait Agent<G: GameState> {
     fn reset(&self) {}
 }
 
+pub fn boxed<'a, G: GameState>(agent: impl Agent<G> + 'a) -> Box<dyn Agent<G> + 'a> {
+    Box::new(agent)
+}
+
 #[macro_export]
 macro_rules! with_game {
     ($name:expr => $G:ident { $($body:tt)* }) => {

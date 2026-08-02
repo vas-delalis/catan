@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 catan = { path = "../catan" }
 common = { path = "../common" }
+crossbeam-channel = "0.5.16"
 ctrlc = "3.5.2"
 generic-array = "1.4.3"
 itertools = "0.14.0"

@@ -6,6 +6,7 @@ use crate::ml::quantization::CLAMP_LIMIT;
 use crate::{
     INTERRUPTED, Tournament,
     agents::{ConstantEvaluator, Search},
+    boxed,
     ml::{Model, data::Dataset, vanilla},
 };
 use common::{GameState, Image, Player};
@@ -25,31 +26,37 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
         .build(model.var_store(), params.learning_rate)
         .unwrap();
 
-    let agent = Search::new(
+    let search_evals = params.search_evals;
+    let dirichlet_alpha = params.dirichlet_alpha;
+    let agent_factory = || {
+        boxed(Search::new(
         &model,
-        params.search_evals,
+            search_evals,
         false,
         1.41,
         1.0,
-        params.dirichlet_alpha,
-    );
-    let reference_agent = Search::new(
+            dirichlet_alpha,
+        ))
+    };
+    let reference_factory = || {
+        boxed(Search::new(
         ConstantEvaluator::new(0.0),
-        params.search_evals,
+            search_evals,
         false,
         1.41,
         1.0,
-        params.dirichlet_alpha,
-    );
+            dirichlet_alpha,
+        ))
+    };
 
     let mut tournament: Tournament<G> = Tournament::new(0.05, 0.05)
         .max_moves(1000)
         .max_time(Duration::from_secs(10));
-    tournament.add(Box::new(agent.clone()), "agent", true);
-    tournament.add(Box::new(reference_agent.clone()), "reference", true);
+    tournament.add(agent_factory, "agent", true);
+    tournament.add(reference_factory, "reference", true);
     for _ in 2..G::Player::LEN {
         // Fill remaining slots
-        tournament.add(Box::new(reference_agent.clone()), "reference", false);
+        tournament.add(reference_factory, "reference", false);
     }
     tournament.play();
     tournament.leaderboard();
@@ -142,11 +149,11 @@ pub fn train<G: GameState + Image + Send>(mut config: TrainingConfig) {
     let mut tournament = Tournament::new(0.05, 0.05)
         .max_moves(1000)
         .max_time(Duration::from_secs(10));
-    tournament.add(Box::new(agent.clone()), "agent", true);
-    tournament.add(Box::new(reference_agent.clone()), "reference", true);
+    tournament.add(agent_factory, "agent", true);
+    tournament.add(reference_factory, "reference", true);
     for _ in 2..G::Player::LEN {
         // Fill remaining slots
-        tournament.add(Box::new(reference_agent.clone()), "reference", false);
+        tournament.add(reference_factory, "reference", false);
     }
     tournament.play();
     tournament.leaderboard();

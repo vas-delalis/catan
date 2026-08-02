@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use rand::{rng, seq::SliceRandom};
 
 use crate::{Agent, INTERRUPTED, agents::Random};
@@ -10,6 +11,7 @@ use common::{GameState, Outcome, Player};
 
 pub struct Tournament<'a, G> {
     roster: Vec<Participant<'a, G>>,
+    stats: Vec<ParticipantStats>,
     matchups: HashMap<(usize, usize), Matchup>,
     false_positive_rate: f64,
     false_negative_rate: f64,
@@ -66,17 +68,21 @@ impl Matchup {
 }
 
 struct Participant<'a, G> {
-    agent: Box<dyn Agent<G> + 'a>,
+    agent_factory: Box<dyn Fn() -> Box<dyn Agent<G> + 'a> + Sync + 'a>,
     name: String,
+    evaluate: bool,
+}
+
+#[derive(Clone)]
+struct ParticipantStats {
     rating: f64,
     wins: usize,
     draws: usize,
     losses: usize,
-    evaluate: bool,
     game_clock: Duration,
 }
 
-impl<'a, G> Participant<'a, G> {
+impl ParticipantStats {
     fn winrate(&self) -> f64 {
         (self.wins as f64 + self.draws as f64 / 2.0) / (self.wins + self.draws + self.losses) as f64
     }
@@ -110,11 +116,127 @@ enum TestResult {
     H1,
 }
 
+/// A game to be simulated by a worker: which roster participants occupy each seat.
+struct GameJob {
+    agents: Vec<usize>,
+}
+
+enum GameOutcome {
+    Cancelled,
+    Completed {
+        outcomes: Vec<Outcome>,
+        pairwise: Vec<Vec<(Outcome, f32)>>,
+        /// Time each agent spent computing moves this game.
+        game_clocks: Vec<Duration>,
+    },
+}
+
+struct GameResult {
+    agents: Vec<usize>,
+    outcome: GameOutcome,
+}
+
+/// Picks `player_count` agents for the next game, favoring match-ups that still need data.
+fn select_job(
+    matchups: &HashMap<(usize, usize), Matchup>,
+    roster_len: usize,
+    player_count: usize,
+) -> GameJob {
+    let mut agents = HashSet::with_capacity(player_count);
+    for (matchup, _) in matchups
+        .iter()
+        .filter(|(_, m)| m.evaluate && m.test_result.is_none())
+    {
+        agents.insert(matchup.0);
+        agents.insert(matchup.1);
+        if agents.len() == player_count {
+            break;
+        }
+    }
+    for i in 0..roster_len {
+        if agents.len() == player_count {
+            break;
+        }
+        agents.insert(i);
+    }
+    GameJob {
+        agents: agents.into_iter().collect(),
+    }
+}
+
+/// Folds a completed game's results into match-up stats, ratings, and SPRTs.
+#[allow(clippy::too_many_arguments)]
+fn apply_result<G>(
+    matchups: &mut HashMap<(usize, usize), Matchup>,
+    stats: &mut [ParticipantStats],
+    roster: &[Participant<'_, G>],
+    false_positive_rate: f64,
+    false_negative_rate: f64,
+    result: GameResult,
+    results: &mut usize,
+    games_played: &mut usize,
+) {
+    let GameOutcome::Completed {
+        outcomes,
+        pairwise,
+        game_clocks,
+    } = result.outcome
+    else {
+        return;
+    };
+    *games_played += 1;
+
+    let agents = result.agents;
+    let player_count = agents.len();
+    for i in 0..player_count {
+        let id1 = agents[i];
+        stats[id1].game_clock += game_clocks[i];
+        match outcomes[i] {
+            Outcome::Win => stats[id1].wins += 1,
+            Outcome::Loss => stats[id1].losses += 1,
+            Outcome::Draw => stats[id1].draws += 1,
+        }
+
+        let mut delta = 0.0;
+        for j in 0..player_count {
+            if i == j {
+                continue;
+            }
+            let id2 = agents[j];
+            let (outcome, score) = pairwise[i][j];
+
+            let matchup = matchups.get_mut(&(id1, id2)).unwrap();
+            matchup.update(outcome);
+
+            if matchup.evaluate
+                && matchup.test_result.is_none()
+                && let Some(result) =
+                    matchup.termination_test(false_positive_rate, false_negative_rate)
+            {
+                *results += 1;
+                let symbol = match result {
+                    TestResult::H0 => "🟰 ",
+                    TestResult::H1 => "✅",
+                };
+                println!(
+                    "{:<15} {} {:>15}",
+                    roster[id1].name, symbol, roster[id2].name
+                );
+            }
+
+            let expected_score = expected_score(stats[id1].rating - stats[id2].rating) as f32;
+            delta += 16.0 * ((score + 1.0) / 2.0 - expected_score);
+        }
+        stats[id1].rating += delta as f64;
+    }
+}
+
 impl<'a, G: GameState> Tournament<'a, G> {
     pub fn new(false_positive_rate: f64, false_negative_rate: f64) -> Self {
         Tournament {
             matchups: HashMap::new(),
             roster: vec![],
+            stats: vec![],
             false_positive_rate,
             false_negative_rate,
             max_moves: None,
@@ -132,15 +254,23 @@ impl<'a, G: GameState> Tournament<'a, G> {
         self
     }
 
-    pub fn add(&mut self, agent: Box<dyn Agent<G> + 'a>, name: &str, evaluate: bool) {
+    /// Adds a participant.
+    pub fn add(
+        &mut self,
+        agent_factory: impl Fn() -> Box<dyn Agent<G> + 'a> + Sync + 'a,
+        name: &str,
+        evaluate: bool,
+    ) {
         self.roster.push(Participant {
-            agent,
+            agent_factory: Box::new(agent_factory),
             name: name.to_string(),
+            evaluate,
+        });
+        self.stats.push(ParticipantStats {
             rating: 1000.0,
             wins: 0,
             draws: 0,
             losses: 0,
-            evaluate,
             game_clock: Duration::ZERO,
         });
     }
@@ -171,9 +301,6 @@ impl<'a, G: GameState> Tournament<'a, G> {
         let start = Instant::now();
 
         self.init_matchups();
-        let luck = Random {};
-        let mut results = 0;
-        let mut games_played = 0;
         let to_test = self.matchups.iter().filter(|(_, m)| m.evaluate).count();
         println!(
             "Running tournament with {} agents ({} match-ups)...",
@@ -181,134 +308,186 @@ impl<'a, G: GameState> Tournament<'a, G> {
             to_test
         );
 
-        while results < to_test {
-            if INTERRUPTED.read() {
-                println!("\r\x1b[KStopping tournament...");
-                //        ^ Clear "^C"
-                INTERRUPTED.reset();
-                break;
-            }
-            if self.max_time.is_some_and(|max| start.elapsed() >= max) {
-                println!("Time's up. Stopping tournament...");
-                break;
-            }
+        let num_workers = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+        let max_moves = self.max_moves;
+        let roster = &self.roster;
+        let mut matchups = std::mem::take(&mut self.matchups);
+        let mut stats = std::mem::take(&mut self.stats);
+        let false_positive_rate = self.false_positive_rate;
+        let false_negative_rate = self.false_negative_rate;
 
-            // Select agents
-            let mut agents = HashSet::with_capacity(player_count);
-            for (matchup, _) in self
-                .matchups
-                .iter()
-                .filter(|(_, m)| m.evaluate && m.test_result.is_none())
-            {
-                agents.insert(matchup.0);
-                agents.insert(matchup.1);
-                if agents.len() == player_count {
-                    break;
-                }
-            }
-            for i in 0..self.roster.len() {
-                if agents.len() == player_count {
-                    break;
-                }
-                agents.insert(i);
-            }
-            let agents: Vec<usize> = agents.into_iter().collect();
+        let (job_tx, job_rx): (Sender<GameJob>, Receiver<GameJob>) = unbounded();
+        let (result_tx, result_rx): (Sender<GameResult>, Receiver<GameResult>) = unbounded();
 
-            let mut players = G::Player::list();
-            players.shuffle(&mut rng());
+        let mut results = 0;
+        let mut games_played = 0;
 
-            // Play game
-            let mut state = G::new();
-            let mut moves = 0;
-            let mut cancelled = false;
-            while !state.is_terminal() {
-                if self.max_moves.is_some_and(|max| moves >= max) {
-                    cancelled = true;
-                    break;
-                }
+        std::thread::scope(|scope| {
+            for _ in 0..num_workers {
+                let job_rx = job_rx.clone();
+                let result_tx = result_tx.clone();
+                scope.spawn(move || {
+                    let agents: Vec<Box<dyn Agent<G> + 'a>> =
+                        roster.iter().map(|p| (p.agent_factory)()).collect();
+                    let luck = Random {};
 
-                let idx = players
-                    .iter()
-                    .position(|&i| i == state.current_player())
-                    .unwrap();
+                    while let Ok(job) = job_rx.recv() {
+                        let seats = job.agents;
 
-                let action = if state.is_random() {
-                    luck.get_action(state.clone())
-                } else {
-                    let t = Instant::now();
-                    let action = self.roster[agents[idx]].agent.get_action(state.clone());
-                    self.roster[agents[idx]].game_clock += t.elapsed();
-                    action
-                };
+                        let mut players = G::Player::list();
+                        players.shuffle(&mut rng());
 
-                state.apply_action(action);
-                for a in agents.iter() {
-                    self.roster[*a].agent.inform(action);
-                }
-                moves += 1;
-            }
-            for a in agents.iter() {
-                self.roster[*a].agent.reset();
-            }
-            if cancelled {
-                continue;
-            }
-            games_played += 1;
+                        let mut state = G::new();
+                        let mut moves = 0;
+                        let mut cancelled = false;
+                        let mut game_clocks = vec![Duration::ZERO; seats.len()];
+                        while !state.is_terminal() {
+                            if max_moves.is_some_and(|max| moves >= max) {
+                                cancelled = true;
+                                break;
+                            }
 
-            // Tally results and run tests
-            for i in 0..player_count {
-                let id1 = agents[i];
-                let (outcome, _) = state.outcome(players[i]).unwrap();
-                match outcome {
-                    Outcome::Win => {
-                        self.roster[id1].wins += 1;
-                    }
-                    Outcome::Loss => {
-                        self.roster[id1].losses += 1;
-                    }
-                    Outcome::Draw => {
-                        self.roster[id1].draws += 1;
-                    }
-                }
-                let mut delta = 0.0;
-                for j in 0..player_count {
-                    if i == j {
-                        continue;
-                    }
-                    let id2 = agents[j];
+                            let idx = players
+                                .iter()
+                                .position(|&pl| pl == state.current_player())
+                                .unwrap();
 
-                    let (outcome, score) = state.pairwise_outcome(players[i], players[j]).unwrap();
-                    let matchup = self.matchups.get_mut(&(id1, id2)).unwrap();
-                    matchup.update(outcome);
+                            let action = if state.is_random() {
+                                luck.get_action(state.clone())
+                            } else {
+                                let t = Instant::now();
+                                let action = agents[seats[idx]].get_action(state.clone());
+                                game_clocks[idx] += t.elapsed();
+                                action
+                            };
 
-                    if matchup.evaluate
-                        && matchup.test_result.is_none()
-                        && let Some(result) = matchup
-                            .termination_test(self.false_positive_rate, self.false_negative_rate)
-                    {
-                        results += 1;
-                        let symbol = match result {
-                            TestResult::H0 => "🟰 ",
-                            TestResult::H1 => "✅",
+                            state.apply_action(action);
+                            for &seat in &seats {
+                                agents[seat].inform(action);
+                            }
+                            moves += 1;
+                        }
+                        for &seat in &seats {
+                            agents[seat].reset();
+                        }
+
+                        let outcome = if cancelled {
+                            GameOutcome::Cancelled
+                        } else {
+                            let mut outcomes = Vec::with_capacity(seats.len());
+                            let mut pairwise = vec![Vec::with_capacity(seats.len()); seats.len()];
+                            for i in 0..seats.len() {
+                                let (outcome, _) = state.outcome(players[i]).unwrap();
+                                outcomes.push(outcome);
+                                for j in 0..seats.len() {
+                                    pairwise[i].push(if i == j {
+                                        (outcome, 0.0)
+                                    } else {
+                                        state.pairwise_outcome(players[i], players[j]).unwrap()
+                                    });
+                                }
+                            }
+                            GameOutcome::Completed {
+                                outcomes,
+                                pairwise,
+                                game_clocks,
+                            }
                         };
-                        println!(
-                            "{:<15} {} {:>15}",
-                            self.roster[id1].name, symbol, self.roster[id2].name
+
+                        if result_tx
+                            .send(GameResult {
+                                agents: seats,
+                                outcome,
+                            })
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                });
+            }
+
+            drop(job_rx);
+            drop(result_tx);
+
+            let capacity = num_workers;
+            let mut in_flight = 0;
+
+            loop {
+                while let Ok(game_result) = result_rx.try_recv() {
+                    in_flight -= 1;
+                    apply_result(
+                        &mut matchups,
+                        &mut stats,
+                        roster,
+                        false_positive_rate,
+                        false_negative_rate,
+                        game_result,
+                        &mut results,
+                        &mut games_played,
+                    );
+                }
+                if results >= to_test {
+                    break;
+                }
+                if INTERRUPTED.read() {
+                    println!("\r\x1b[KStopping tournament...");
+                    //        ^ Clear "^C"
+                    INTERRUPTED.reset();
+                    break;
+                }
+                if self.max_time.is_some_and(|max| start.elapsed() >= max) {
+                    println!("Time's up. Stopping tournament...");
+                    break;
+                }
+
+                if in_flight < capacity {
+                    let job = select_job(&matchups, roster.len(), player_count);
+                    job_tx.send(job).unwrap();
+                    in_flight += 1;
+                } else if let Ok(game_result) = result_rx.recv() {
+                    in_flight -= 1;
+                    apply_result(
+                        &mut matchups,
+                        &mut stats,
+                        roster,
+                        false_positive_rate,
+                        false_negative_rate,
+                        game_result,
+                        &mut results,
+                        &mut games_played,
+                    );
+                } else {
+                    break;
+                }
+            }
+
+            // Stop feeding workers; let games already in flight finish and drain them.
+            drop(job_tx);
+            while in_flight > 0 {
+                match result_rx.recv() {
+                    Ok(game_result) => {
+                        in_flight -= 1;
+                        apply_result(
+                            &mut matchups,
+                            &mut stats,
+                            roster,
+                            false_positive_rate,
+                            false_negative_rate,
+                            game_result,
+                            &mut results,
+                            &mut games_played,
                         );
                     }
-                    let expected_score =
-                        expected_score(self.roster[id1].rating - self.roster[id2].rating) as f32;
-                    delta += 16.0 * ((score + 1.0) / 2.0 - expected_score);
-                    // dbg!(
-                    //     self.roster[id1].rating,
-                    //     self.roster[id2].rating,
-                    //     expected_score,
-                    //     delta
-                    // );
+                    Err(_) => break,
                 }
-                self.roster[id1].rating += delta as f64;
             }
-        }
+        });
+
+        self.matchups = matchups;
+        self.stats = stats;
 
         println!("Played {} games", games_played);
         println!("Elapsed: {}s", start.elapsed().as_secs());
@@ -332,16 +511,16 @@ impl<'a, G: GameState> Tournament<'a, G> {
             }
         }
         println!();
-        for agent in &self.roster {
+        for (participant, stats) in self.roster.iter().zip(&self.stats) {
             println!(
                 "{:<12} WR: {:>3.0}% | Rating: {:>4.0} | {}/{}/{} | Time: {:.1}s",
-                agent.name,
-                agent.winrate() * 100.0,
-                agent.rating,
-                agent.wins,
-                agent.draws,
-                agent.losses,
-                agent.game_clock.as_secs_f64(),
+                participant.name,
+                stats.winrate() * 100.0,
+                stats.rating,
+                stats.wins,
+                stats.draws,
+                stats.losses,
+                stats.game_clock.as_secs_f64(),
             )
         }
     }
