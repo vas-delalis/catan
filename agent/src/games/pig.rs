@@ -2,7 +2,7 @@ use generic_array::{GenericArray, typenum};
 use std::{cell::RefCell, fmt::Display};
 use tch::Tensor;
 
-use crate::{Agent, GameState};
+use crate::{Agent, GameState, agents::Evaluator};
 use common::{Evaluation, Image, Outcome, Player as PlayerTrait};
 
 const WIN_SCORE: u32 = 100;
@@ -228,7 +228,7 @@ impl OptimalPig {
         }
     }
 
-    fn should_roll(&self, i: u32, j: u32, k: u32) -> bool {
+    fn should_roll(&self, i: usize, j: usize, k: usize) -> bool {
         let mut p_roll = 1.0 - self.p_win(j, i, 0);
         for roll in 2..=6 {
             p_roll += self.p_win(i, j, k + roll);
@@ -240,27 +240,25 @@ impl OptimalPig {
         p_roll > p_hold
     }
 
-    fn p_win(&self, i: u32, j: u32, k: u32) -> f32 {
-        if i + k >= WIN_SCORE {
+    fn p_win(&self, i: usize, j: usize, k: usize) -> f32 {
+        let goal = WIN_SCORE as usize;
+        if i + k >= goal {
             return 1.0;
-        } else if j >= WIN_SCORE {
+        } else if j >= goal {
             return 0.0;
-        } else if k != 0
-            && self.probabilities.borrow()[i as usize][j as usize].len() < (WIN_SCORE - i) as usize
-        {
-            self.probabilities.borrow_mut()[i as usize][j as usize].resize(WIN_SCORE as usize, 0.0);
-            for k2 in (1..WIN_SCORE).rev() {
+        } else if k != 0 && self.probabilities.borrow()[i][j].len() < (goal - i) {
+            self.probabilities.borrow_mut()[i][j].resize(goal, 0.0);
+            for k2 in (1..goal).rev() {
                 let mut p_roll = 1.0 - self.p_win(j, i, 0);
                 for roll in 2..=6 {
                     p_roll += self.p_win(i, j, k2 + roll)
                 }
                 p_roll /= 6.0;
                 let p_hold = 1.0 - self.p_win(j, i + k2, 0);
-                self.probabilities.borrow_mut()[i as usize][j as usize][k2 as usize] =
-                    p_roll.max(p_hold);
+                self.probabilities.borrow_mut()[i][j][k2] = p_roll.max(p_hold);
             }
         }
-        self.probabilities.borrow()[i as usize][j as usize][k as usize]
+        self.probabilities.borrow()[i][j][k]
     }
 }
 
@@ -279,7 +277,7 @@ impl Agent<Pig> for OptimalPig {
                 game_state.turn_total,
             )
         };
-        if self.should_roll(i, j, k) {
+        if self.should_roll(i as usize, j as usize, k as usize) {
             Action::Roll
         } else {
             Action::Bank
@@ -288,6 +286,33 @@ impl Agent<Pig> for OptimalPig {
 
     fn inform(&self, _action: <Pig as GameState>::Action) {}
     fn reset(&self) {}
+}
+
+impl Evaluator<Pig> for OptimalPig {
+    fn evaluate(&self, game_state: &Pig) -> Evaluation<Pig> {
+        let (i, j, k) = if game_state.current_player() == Player::P1 {
+            (
+                game_state.scores[0],
+                game_state.scores[1],
+                game_state.turn_total,
+            )
+        } else {
+            (
+                game_state.scores[1],
+                game_state.scores[0],
+                game_state.turn_total,
+            )
+        };
+
+        let p = self.p_win(i as usize, j as usize, k as usize) * 2.0 - 1.0;
+        if game_state.current_player() == Player::P1 {
+            vec![p, -p]
+        } else {
+            vec![-p, p]
+        }
+        .try_into()
+        .unwrap()
+    }
 }
 
 #[cfg(test)]
