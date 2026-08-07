@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use common::GameState;
 pub use tournament::Tournament;
 
-pub(crate) struct Interrupt {
+pub struct Interrupt {
     ready: AtomicBool,
     interrupted: AtomicBool,
 }
@@ -33,7 +33,7 @@ impl Interrupt {
     }
 }
 
-pub(crate) static INTERRUPTED: Interrupt = Interrupt {
+pub static INTERRUPTED: Interrupt = Interrupt {
     ready: AtomicBool::new(false),
     interrupted: AtomicBool::new(false),
 };
@@ -51,13 +51,28 @@ pub fn boxed<'a, G: GameState>(agent: impl Agent<G> + 'a) -> Box<dyn Agent<G> + 
 #[macro_export]
 macro_rules! with_game {
     ($name:expr => $G:ident { $($body:tt)* }) => {
-        match $name {
-            "DotsAndBoxes" => { type $G = $crate::games::DotsAndBoxes; $($body)* }
-            "TicTacToe"    => { type $G = $crate::games::TicTacToe;    $($body)* }
-            "OddsGame"     => { type $G = $crate::games::OddsGame;     $($body)* }
-            "Pig"          => { type $G = $crate::games::Pig;          $($body)* }
-            "Catan"        => { type $G = $crate::games::Catan;        $($body)* }
-            other => panic!("Unknown game: {other}"),
+        $crate::with_game!(@dispatch $name, $G, [$($body)*],
+            $crate::games::DotsAndBoxes,
+            $crate::games::TicTacToe,
+            $crate::games::OddsGame,
+            $crate::games::Pig,
+            $crate::games::Catan,
+        )
+    };
+    (@dispatch $name:expr, $G:ident, [$($body:tt)*], $head:ty, $($tail:ty,)*) => {
+        if $name == <$head as $crate::__deps::GameState>::name() {
+            type $G = $head;
+            $($body)*
+        } else {
+            $crate::with_game!(@dispatch $name, $G, [$($body)*], $($tail,)*)
         }
-    }
+    };
+    (@dispatch $name:expr, $G:ident, [$($body:tt)*], ) => {
+        panic!("Unknown game: {}", $name)
+    };
+}
+
+#[doc(hidden)]
+pub mod __deps {
+    pub use common::GameState;
 }
