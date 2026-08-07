@@ -50,7 +50,7 @@ impl GameState for DotsAndBoxes {
     type Player = Player;
 
     fn name() -> String {
-        format!("DotsAndBoxes{}x{}", R, C)
+        String::from("DotsAndBoxes")
     }
 
     fn new() -> Self {

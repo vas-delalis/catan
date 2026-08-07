@@ -8,7 +8,7 @@ use tch::{
 use crate::{
     GameState,
     agents::Evaluator,
-    ml::{TrainingConfig, quantization::CLAMP_LIMIT},
+    ml::{ModelMetadata, quantization::CLAMP_LIMIT},
 };
 use common::{Evaluation, Image, Player};
 
@@ -65,21 +65,23 @@ impl<G: GameState + Image> Model<G> {
         }
     }
 
-    pub fn load<T: ToString>(name: T) -> Result<(Self, TrainingConfig), Box<dyn Error>> {
+    pub fn load<T: ToString>(name: T) -> Result<(Self, ModelMetadata), Box<dyn Error>> {
         let mut path = Self::get_dir();
         path.push(name.to_string());
 
         let checkpoint_path = path.with_extension("safetensors");
-        let config_path = path.with_extension("json");
+        let metadata_path = path.with_extension("json");
 
-        let config_json = fs::read_to_string(config_path)?;
-        let config: TrainingConfig = serde_json::from_str(&config_json)?;
+        let metadata_json = fs::read_to_string(metadata_path)?;
+        let metadata: ModelMetadata = serde_json::from_str(&metadata_json)?;
 
         let vs = VarStore::new(tch::Device::Cpu);
         let root = vs.root();
 
-        let create_layers =
-            vanilla::<G>(config.model_config.layers, config.model_config.hidden_dim);
+        let create_layers = vanilla::<G>(
+            metadata.model_config.layers,
+            metadata.model_config.hidden_dim,
+        );
 
         let mut model = Model {
             layers: create_layers(&root),
@@ -88,14 +90,14 @@ impl<G: GameState + Image> Model<G> {
         };
         model.vs.load(checkpoint_path)?;
 
-        Ok((model, config))
+        Ok((model, metadata))
     }
 
-    /// Saves the model as a checkpoint–config file pair and returns their paths.
-    pub fn save_with_config(
+    /// Saves the model as a checkpoint–metadata file pair and returns their paths.
+    pub fn save_with_metadata(
         &self,
         name: &str,
-        config: &TrainingConfig,
+        metadata: ModelMetadata,
     ) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
         let mut path = Self::get_dir();
         path.push(name);
@@ -103,13 +105,13 @@ impl<G: GameState + Image> Model<G> {
         let checkpoint_path = path.with_extension("safetensors");
         self.vs.save(&checkpoint_path)?;
 
-        let config_path = path.with_extension("json");
-        let config_json = serde_json::to_string_pretty(config)?;
-        fs::write(&config_path, config_json)?;
-        Ok((checkpoint_path, config_path))
+        let metadata_path = path.with_extension("json");
+        let metadata_json = serde_json::to_string_pretty(&metadata)?;
+        fs::write(&metadata_path, metadata_json)?;
+        Ok((checkpoint_path, metadata_path))
     }
 
-    /// Saves the model without its corresponding config. See also `save_with_config()`.
+    /// Saves the model without its corresponding metadata. See also `save_with_metadata()`.
     pub fn save(&self, name: &str) -> Result<PathBuf, Box<dyn Error>> {
         let mut path = Self::get_dir();
         path.push(name);

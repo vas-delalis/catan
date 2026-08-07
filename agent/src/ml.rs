@@ -6,12 +6,28 @@ mod training;
 pub use model::{Model, vanilla};
 pub use quantization::{ACTIVATION_SCALE, QuantizedEvaluator, allocate_aligned_slice};
 use serde::{Deserialize, Serialize};
-pub use training::train;
+pub use training::Trainer;
 
-#[derive(Clone, Serialize, Deserialize)]
+/// Structure of the `training_config.json` file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingConfig {
     pub model_config: ModelConfig,
     pub hyperparameters: Hyperparameters,
+}
+
+/// Structure of a model's accompanying metadata file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelMetadata {
+    pub model_config: ModelConfig,
+    pub hyperparameters: Hyperparameters,
+    pub training_data: TrainingData,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingData {
+    pub epochs: usize,
+    pub epoch_loss: Vec<f32>,
+    pub duration_secs: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +39,7 @@ pub struct ModelConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hyperparameters {
-    pub epochs: usize,
+    pub max_epochs: usize,
     pub search_evals: usize,
     pub batch_size: usize,
     pub train_replays: usize,

@@ -1,4 +1,4 @@
-use agent::ml::{TrainingConfig, train};
+use agent::ml::{Trainer, TrainingConfig};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,7 +11,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: TrainingConfig = serde_json::from_str(&config_json)?;
 
     agent::with_game!(config.model_config.game.as_str() => G {
-        train::<G>(config)
+        let mut trainer: Trainer<G> = Trainer::new(config);
+
+        trainer.run_tournament();
+
+        while trainer.epoch < trainer.params.max_epochs {
+            trainer.run_epoch();
+        }
+        println!("Training complete. Elapsed: {:.1}s", trainer.metadata().training_data.duration_secs);
+
+        trainer.run_tournament();
+
+        let (checkpoint_path, _) = trainer.save_model()?;
+        println!(
+            "Saved as {}",
+            checkpoint_path.file_name().unwrap().to_string_lossy()
+        );
     });
 
     Ok(())
