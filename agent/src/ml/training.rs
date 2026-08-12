@@ -23,15 +23,16 @@ use tch::{
 pub struct Trainer<G: GameState + Image> {
     pub model: Model<G>,
     pub model_id: usize,
-    model_config: ModelConfig,
+    pub model_config: ModelConfig,
     pub params: Hyperparameters,
-    optimizer: Optimizer,
-    dataset_train: Dataset<G>,
-    dataset_test: Dataset<G>,
+    pub optimizer: Optimizer,
+    pub dataset_train: Dataset<G>,
+    pub dataset_test: Dataset<G>,
     pub epoch: usize,
-    loss: Vec<f32>,
-    norm: Vec<f32>,
-    time: Duration,
+    pub prev_values: Vec<Vec<f32>>,
+    pub loss: Vec<f32>,
+    pub norm: Vec<f32>,
+    pub time: Duration,
 }
 
 impl<G: GameState + Image> Trainer<G> {
@@ -54,7 +55,6 @@ impl<G: GameState + Image> Trainer<G> {
             loss: Vec::with_capacity(params.max_epochs),
             norm: Vec::with_capacity(params.max_epochs),
             model_config,
-            params,
             model,
             optimizer,
             dataset_train,
@@ -62,6 +62,8 @@ impl<G: GameState + Image> Trainer<G> {
             epoch: 1,
             model_id: Model::<G>::get_next_id(),
             time: Duration::ZERO,
+            prev_values: Vec::with_capacity(params.train_replays),
+            params,
         }
     }
 
@@ -94,19 +96,22 @@ impl<G: GameState + Image> Trainer<G> {
         tournament.leaderboard();
     }
 
-    pub fn run_epoch(&mut self) {
-        let start = Instant::now();
+    pub fn generate_data(&mut self) {
         let params = &self.params;
 
         self.dataset_train
             .self_play(&self.model, &params, default_threads());
         self.dataset_test
             .self_play(&self.model, &params, default_threads());
+    }
+
+    pub fn run_epoch(&mut self) {
+        let start = Instant::now();
+        let params = &self.params;
 
         // Train
         let mut train_loss = 0.0;
-        let n_iterations = self.dataset_train.len().div_ceil(params.batch_size);
-
+        let n_samples = self.dataset_train.len();
         for batch in &self.dataset_train.drain().chunks(params.batch_size) {
             let mut images = Vec::with_capacity(params.batch_size * G::Player::LEN);
             let mut targets = Vec::with_capacity(params.batch_size * G::Player::LEN);
@@ -120,8 +125,15 @@ impl<G: GameState + Image> Trainer<G> {
             let targets = Tensor::stack(&targets, 0);
 
             let output = self.model.infer(images);
+            let loss = output.mse_loss(&targets, tch::Reduction::Sum);
 
-            let loss = output.mse_loss(&targets, tch::Reduction::Mean);
+            // Store outputs
+            let flat_values: Vec<f32> = output.flatten(0, -1).try_into().unwrap();
+            self.prev_values = flat_values
+                .chunks(G::Player::LEN)
+                .map(|chunk| chunk.to_vec())
+                .collect();
+
             self.optimizer.backward_step(&loss);
             {
                 // Clamp weights for later quantization
@@ -137,24 +149,15 @@ impl<G: GameState + Image> Trainer<G> {
 
         let epoch_avg_loss = train_loss / n_samples as f32 / G::Player::LEN as f32;
         self.loss.push(epoch_avg_loss);
-        print!("[Epoch {}] Train: {:.3} / ", self.epoch, epoch_avg_loss);
+        print!("[Epoch {}] Loss: {:.3} / ", self.epoch, epoch_avg_loss);
 
         // Test
-        let _no_grad = tch::no_grad_guard(); // Turn off gradient computation
-        let mut test_losses = vec![];
-        for (state, values) in self.dataset_test.drain() {
-            let x = state.tensor_image();
-            let y = Tensor::from_slice(&values);
-            let loss = self.model.infer(x).mse_loss(&y, tch::Reduction::Mean);
-            let loss: f32 = loss.try_into().unwrap();
-            test_losses.push(loss);
+        {
+            let _no_grad = tch::no_grad_guard();
+            let state = G::new();
+            let eval: Vec<f32> = self.model.infer(state.tensor_image()).try_into().unwrap();
+            println!("Initial eval: {:?}", eval);
         }
-
-        let n = test_losses.len();
-        let sum: f32 = test_losses.iter().sum();
-        println!("Test: {:.3}", sum / n as f32);
-
-        self.time += start.elapsed();
 
         let mut norm = 0.0;
         for p in self.model.var_store().trainable_variables() {
@@ -186,6 +189,7 @@ impl<G: GameState + Image> Trainer<G> {
         }
 
         self.epoch += 1;
+        self.time += start.elapsed();
     }
 
     pub fn metadata(&self) -> ModelMetadata {

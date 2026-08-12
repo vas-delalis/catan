@@ -15,7 +15,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         trainer.run_tournament();
 
+        println!("Training {} parameters...", trainer.model.parameter_count());
+
         while trainer.epoch < trainer.params.max_epochs {
+            trainer.generate_data();
             trainer.run_epoch();
         }
         println!("Training complete. Elapsed: {:.1}s", trainer.metadata().training_data.duration_secs);

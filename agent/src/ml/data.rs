@@ -11,7 +11,7 @@ use crate::{
 type Snapshot<G> = (G, Evaluation<G>);
 
 pub struct Dataset<G: GameState> {
-    replay_buffer: Vec<Snapshot<G>>,
+    pub replay_buffer: Vec<Snapshot<G>>,
     replay_count: usize,
 }
 

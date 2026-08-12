@@ -1,5 +1,5 @@
 use generic_array::{GenericArray, typenum};
-use std::{cell::RefCell, fmt::Display};
+use std::fmt::Display;
 use tch::Tensor;
 
 use crate::{Agent, GameState, agents::Evaluator};
@@ -198,7 +198,7 @@ impl From<Player> for usize {
 }
 
 pub struct OptimalPig {
-    probabilities: RefCell<Vec<Vec<Vec<f32>>>>,
+    probabilities: Vec<Vec<Vec<f32>>>,
 }
 
 impl OptimalPig {
@@ -217,14 +217,50 @@ impl OptimalPig {
         let data: ProbabilitiesFile =
             serde_json::from_str(&json).expect("probabilities.json should be valid JSON");
 
-        let probabilities = data
-            .probabilities
-            .chunks(100)
-            .map(|row| row.iter().map(|&p| vec![p]).collect())
+        let goal = WIN_SCORE as usize;
+        let base: Vec<Vec<f32>> = data.probabilities.chunks(goal).map(<[f32]>::to_vec).collect();
+
+        // Each (i, j) row only depends on k=0 values (loaded directly from `base`,
+        // for arbitrary i/j) and its own higher-k entries, so rows can be filled
+        // independently in one pass with no cross-row recursion.
+        let probabilities = (0..goal)
+            .map(|i| {
+                (0..goal)
+                    .map(|j| {
+                        let mut row = vec![0.0; goal];
+                        row[0] = base[i][j];
+                        for k in (1..goal).rev() {
+                            if i + k >= goal {
+                                row[k] = 1.0;
+                                continue;
+                            }
+                            let mut p_roll = 1.0 - Self::p_win_base(&base, j, i, goal);
+                            for roll in 2..=6 {
+                                let k2 = k + roll;
+                                p_roll += if i + k2 >= goal { 1.0 } else { row[k2] };
+                            }
+                            p_roll /= 6.0;
+                            let p_hold = 1.0 - Self::p_win_base(&base, j, i + k, goal);
+                            row[k] = p_roll.max(p_hold);
+                        }
+                        row
+                    })
+                    .collect()
+            })
             .collect();
 
-        OptimalPig {
-            probabilities: RefCell::new(probabilities),
+        OptimalPig { probabilities }
+    }
+
+    /// `p_win` for the k=0 case, looking up `base` directly instead of the
+    /// (possibly out-of-range) precomputed table.
+    fn p_win_base(base: &[Vec<f32>], i: usize, j: usize, goal: usize) -> f32 {
+        if i >= goal {
+            1.0
+        } else if j >= goal {
+            0.0
+        } else {
+            base[i][j]
         }
     }
 
@@ -243,22 +279,12 @@ impl OptimalPig {
     fn p_win(&self, i: usize, j: usize, k: usize) -> f32 {
         let goal = WIN_SCORE as usize;
         if i + k >= goal {
-            return 1.0;
+            1.0
         } else if j >= goal {
-            return 0.0;
-        } else if k != 0 && self.probabilities.borrow()[i][j].len() < (goal - i) {
-            self.probabilities.borrow_mut()[i][j].resize(goal, 0.0);
-            for k2 in (1..goal).rev() {
-                let mut p_roll = 1.0 - self.p_win(j, i, 0);
-                for roll in 2..=6 {
-                    p_roll += self.p_win(i, j, k2 + roll)
-                }
-                p_roll /= 6.0;
-                let p_hold = 1.0 - self.p_win(j, i + k2, 0);
-                self.probabilities.borrow_mut()[i][j][k2] = p_roll.max(p_hold);
-            }
+            0.0
+        } else {
+            self.probabilities[i][j][k]
         }
-        self.probabilities.borrow()[i][j][k]
     }
 }
 
