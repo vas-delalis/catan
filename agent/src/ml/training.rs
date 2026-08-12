@@ -135,7 +135,7 @@ impl<G: GameState + Image> Trainer<G> {
             train_loss += loss;
         }
 
-        let epoch_avg_loss = train_loss / n_iterations as f32;
+        let epoch_avg_loss = train_loss / n_samples as f32 / G::Player::LEN as f32;
         self.loss.push(epoch_avg_loss);
         print!("[Epoch {}] Train: {:.3} / ", self.epoch, epoch_avg_loss);
 
