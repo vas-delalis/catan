@@ -122,6 +122,10 @@ impl<G: GameState, E: Evaluator<G>> Search<G, E> {
 
         // Run inference
         let values = self.evaluator.evaluate(game);
+        // Normalize values so they sum to zero
+        let sum: f32 = values.iter().sum();
+        let delta = sum / G::Player::LEN as f32;
+        let values = values.map(|v| v - delta);
         // Convert priors into odds
         let policy: Vec<f64> = if let Some(probs) = probs {
             probs.into_iter().map(|p| p / (1.0 - p)).collect()
