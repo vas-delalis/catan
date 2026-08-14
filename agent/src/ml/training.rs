@@ -97,12 +97,14 @@ impl<G: GameState + Image> Trainer<G> {
     }
 
     pub fn generate_data(&mut self) {
+        let start = Instant::now();
         let params = &self.params;
 
         self.dataset_train
             .self_play(&self.model, &params, default_threads());
         self.dataset_test
             .self_play(&self.model, &params, default_threads());
+        self.time += start.elapsed();
     }
 
     pub fn run_epoch(&mut self) {
